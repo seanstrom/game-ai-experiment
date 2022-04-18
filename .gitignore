@@ -1,0 +1,7 @@
+.direnv/
+node_modules/
+.build/
+venv/
+dist/
+.parcel-cache/
+.idea/

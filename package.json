@@ -1,0 +1,22 @@
+{
+  "name": "python-transcrypt-template",
+  "version": "1.0.0",
+  "description": "",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "parcel src/index.html"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@parcel/transformer-sass": "^2.3.2",
+    "parcel": "^2.3.2",
+    "parcel-transformer-transcrypt": "^0.1.4"
+  },
+  "dependencies": {
+    "global": "^4.4.0"
+  }
+}

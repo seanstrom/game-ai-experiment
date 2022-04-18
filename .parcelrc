@@ -1,0 +1,7 @@
+{
+  "extends": ["@parcel/config-default"],
+  "transformers": {
+    "*.py": ["parcel-transformer-transcrypt"],
+    "*.{scss,sass}": ["@parcel/transformer-sass"]
+  }
+}
