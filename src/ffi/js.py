@@ -13,6 +13,13 @@ def __new__(*args) -> Any:
 # __pragma__ ('noskip')
 
 
+# Hyperapp FFI
+
+Hyper = require('hyperapp')
+Html = require('@hyperapp/html')
+Svg = require('@hyperapp/svg')
+
+
 # Globals FFI
 
 window = require('global/window')
