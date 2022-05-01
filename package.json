@@ -17,6 +17,9 @@
     "parcel-transformer-transcrypt": "^0.1.4"
   },
   "dependencies": {
-    "global": "^4.4.0"
+    "@hyperapp/html": "^2.0.0",
+    "@hyperapp/svg": "^2.0.0",
+    "global": "^4.4.0",
+    "hyperapp": "^2.0.22"
   }
 }
