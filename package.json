@@ -19,6 +19,7 @@
   "dependencies": {
     "@hyperapp/html": "^2.0.0",
     "@hyperapp/svg": "^2.0.0",
+    "@thi.ng/fuzzy": "^2.1.5",
     "global": "^4.4.0",
     "hyperapp": "^2.0.22"
   }
