@@ -20,6 +20,11 @@ Html = require('@hyperapp/html')
 Svg = require('@hyperapp/svg')
 
 
+# Thi-ng Fuzzy FFI
+
+Fuzzy = require('@thi.ng/fuzzy')
+
+
 # Globals FFI
 
 window = require('global/window')
