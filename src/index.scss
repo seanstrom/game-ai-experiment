@@ -9,3 +9,39 @@ body {
   font-family: "Helvetica Neue", sans-serif;
 }
 
+.container {
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.canvas {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: center;
+
+  svg {
+    background: #333;
+    border-radius: 30px;
+    border: 1px solid black;
+    padding: 20px;
+  }
+}
+
+.stats {
+  display: flex;
+  flex: 1 1 auto;
+  align-self: center;
+  flex-direction: column;
+  padding: 10px;
+
+  .stat-field {
+    padding: 10px;
+    margin-bottom: 2px;
+  }
+
+  .fuzzy-input-chart {
+    display: flex;
+    flex: 1 1 auto;
+  }
+}
