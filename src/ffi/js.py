@@ -23,6 +23,7 @@ Svg = require('@hyperapp/svg')
 # Thi-ng Fuzzy FFI
 
 Fuzzy = require('@thi.ng/fuzzy')
+FuzzyViz = require('@thi.ng/fuzzy-viz')
 
 
 # Globals FFI
