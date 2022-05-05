@@ -4,28 +4,82 @@ from dataclasses import dataclass
 from ffi.js import asdict, document, window, Html, Hyper, Svg, Fuzzy, FuzzyViz
 
 
-# State
+# Platform
 
 @dataclass
-class Coord:
+class Tick:
+    pass
+
+
+@dataclass
+class Vec:
     x: float = 0
     y: float = 0
 
 
 @dataclass
 class Box:
+    pos: Vec = Any
     color: str = ""
     width: float = 0
     height: float = 0
-    pos: Coord = None
+
+
+@dataclass
+class Entity:
+    id: str = ""
+    state: Any = Any
+    view: Callable[[Any], Any] = Any
+    update_: Callable[[Any, Any], Any] = Any
 
 
 @dataclass
 class FuzzyLogic:
-    inputs: Dict[str, Any] = None
-    outputs: Dict[str, Any] = None
-    rules: List[Any] = None
+    inputs: Dict[str, Any] = Any
+    outputs: Dict[str, Any] = Any
+    rules: List[Any] = Any
 
+
+# Keyboard
+
+@dataclass
+class Keyboard:
+    up: bool = False
+    down: bool = False
+    left: bool = False
+    right: bool = False
+
+
+@dataclass
+class ArrowKeys:
+    Up = "ArrowUp"
+    Down = "ArrowDown"
+    Left = "ArrowLeft"
+    Right = "ArrowRight"
+
+
+@dataclass
+class KeyChange:
+    key: str = ""
+    is_down: bool = False
+
+
+Arrow = ArrowKeys()
+
+
+def is_arrow_key(key) -> bool:
+    return key in [Arrow.Up, Arrow.Down, Arrow.Left, Arrow.Right]
+
+
+def to_x(keyboard):
+    return (1 if keyboard.right else 0) - (1 if keyboard.left else 0)
+
+
+def to_y(keyboard):
+    return (1 if keyboard.down else 0) - (1 if keyboard.up else 0)
+
+
+# Game
 
 @dataclass
 class Bot(Box):
@@ -34,7 +88,8 @@ class Bot(Box):
 
 @dataclass
 class Player(Box):
-    dir: Coord = Any
+    dir: Vec = Any
+    brakes: float = 0.0
     controller: FuzzyLogic = Any
 
 
@@ -46,24 +101,9 @@ class Proximity(Box):
 
 
 @dataclass
-class Entity:
-    id: str = ""
-    state: Any = None
-    view: Callable[[Any], Any] = None
-    update_: Callable[[Any, Any], Any] = None
-
-
-@dataclass
-class Keyboard:
-    up: bool = False
-    down: bool = False
-    left: bool = False
-    right: bool = False
-
-
-@dataclass
 class Ids:
     bot: str = "bot"
+    fov: str = "fov"
     player: str = "player"
     boundary: str = "boundary"
     proximity: str = "proximity"
@@ -71,25 +111,14 @@ class Ids:
 
 @dataclass
 class State:
-    ids: Ids = None
-    keyboard: Keyboard = None
-    entities: Dict[str, Entity] = None
+    ids: Ids = Any
+    keyboard: Keyboard = Any
+    entities: Dict[str, Entity] = Any
 
 
 @dataclass
 class Ref:
     value: State = Any
-
-
-@dataclass
-class KeyChange:
-    key: str = ""
-    is_down: bool = False
-
-
-@dataclass
-class Tick:
-    pass
 
 
 # Box
@@ -122,7 +151,7 @@ def make_outer_rect(player: Player, bot: Bot):
         bot.pos.y + bot.height - player.pos.y,
         player.pos.y + player.height - bot.pos.y)
 
-    return Box(color="yellow", height=height, width=width, pos=Coord(x=x, y=y))
+    return Box(color="yellow", height=height, width=width, pos=Vec(x=x, y=y))
 
 
 def make_inner_rect(outer_rect: Box, player: Player, bot: Bot):
@@ -135,7 +164,7 @@ def make_inner_rect(outer_rect: Box, player: Player, bot: Bot):
     width = abs(outer_rect.width - player.width - bot.width)
     height = abs(outer_rect.height - player.height - bot.height)
 
-    return Box(color="green", height=height, width=width, pos=Coord(x=x, y=y))
+    return Box(color="green", height=height, width=width, pos=Vec(x=x, y=y))
 
 
 def detect_proximity(player: Player, bot: Bot):
@@ -173,6 +202,53 @@ def view_proximity(proximity: Proximity):
     ])
 
 
+# Field of View
+
+def magnitude(v: Vec) -> float:
+    return sqrt(pow(v.x, 2) + pow(v.y, 2))
+
+
+def to_dir(start: Vec, end: Vec) -> Vec:
+    x = end.x - start.x
+    y = end.y - start.y
+    return Vec(x, y)
+
+
+def normalize(v: Vec) -> Vec:
+    mag = magnitude(v)
+    x = v.x / mag
+    y = v.y / mag
+    return Vec(x, y)
+
+
+def dot_product(a: Vec, b: Vec) -> float:
+    return a.x * b.x + a.y * b.y
+
+
+def to_center_pos(pos, width, height) -> Vec:
+    x = pos.x + width / 2
+    y = pos.y + height / 2
+    return Vec(x, y)
+
+
+def init_fov(player: Player, bot: Bot) -> float:
+    bot_pos = to_center_pos(bot.pos, bot.width, bot.height)
+    player_pos = to_center_pos(player.pos, player.width, player.height)
+    to_bot_dir = normalize(to_dir(player_pos, bot_pos))
+    dot = dot_product(normalize(player.dir), to_bot_dir)
+    return dot
+
+
+def update_fov(fov: float, state: State) -> float:
+    bot = state.entities[state.ids.bot]
+    player = state.entities[state.ids.player]
+    return init_fov(player.state, bot.state)
+
+
+def view_fov(fov: float):
+    return None
+
+
 # Player
 
 def init_player(boundary: Box) -> Player:
@@ -186,22 +262,38 @@ def init_player(boundary: Box) -> Player:
                 "far": Fuzzy.ramp(100, 300)
             })
         },
-        outputs=dict(), rules=[])
+        outputs={
+            "brakes": Fuzzy.variable([0, 100], {
+                "low": Fuzzy.gaussian(30, 20),
+                "medium": Fuzzy.gaussian(70, 20),
+                "high": Fuzzy.gaussian(100, 10),
+            })
+        },
+        rules=[
+            Fuzzy['or']({"distance": "near",}, {"brakes": "high"}),
+            Fuzzy['or']({"distance": "neutral", }, {"brakes": "medium"}),
+            Fuzzy['or']({"distance": "far", }, {"brakes": "low"}),
+        ])
 
     return Player(
         width=50,
         height=50,
-        dir=Coord(0, 0),
+        brakes=0.0,
         color="blue",
-        pos=Coord(x=0, y=0),
+        dir=Vec(1, 0),
+        pos=Vec(x=0, y=0),
         controller=controller)
 
 
-def update_player_pos(player: Player, boundary: Box) -> Coord:
+def update_player_pos(player: Player, boundary: Box, keyboard: Keyboard) -> Vec:
     dt = 1.666
-    speed = 1
-    x = player.pos.x + (player.dir.x * speed * dt)
-    y = player.pos.y + (player.dir.y * speed * dt)
+    speed_multiplier = 3
+    brakes = (player.brakes / 100)
+    base_speed = max(0.0, 1.0 - brakes)
+    speed = base_speed * speed_multiplier
+
+    x = player.pos.x + (to_x(keyboard) * speed * dt)
+    y = player.pos.y + (to_y(keyboard) * speed * dt)
 
     player.pos.x = min(
         max(boundary.pos.x, x),
@@ -214,22 +306,35 @@ def update_player_pos(player: Player, boundary: Box) -> Coord:
     return player.pos
 
 
-def update_player_dir(player: Player, keyboard: Keyboard) -> Coord:
-    def to_x(keyboard):
-        return (1 if keyboard.right else 0) - (1 if keyboard.left else 0)
+def update_player_dir(player: Player, keyboard: Keyboard) -> Vec:
+    x = to_x(keyboard)
+    y = to_y(keyboard)
 
-    def to_y(keyboard):
-        return (1 if keyboard.down else 0) - (1 if keyboard.up else 0)
+    if x != 0 or y != 0:
+        player.dir.x = x
+        player.dir.y = y
 
-    player.dir.x = to_x(keyboard)
-    player.dir.y = to_y(keyboard)
     return player.dir
+
+
+def update_player_brakes(player: Player, proximity: Proximity) -> float:
+    result = Fuzzy.defuzz(
+        player.controller.inputs,
+        player.controller.outputs,
+        player.controller.rules,
+        {"distance": proximity.distance})
+
+    return result.brakes
 
 
 def update_player(player: Player, state: State) -> Player:
     boundary = state.entities[state.ids.boundary]
+    proximity = state.entities[state.ids.proximity]
+
+    player.brakes = update_player_brakes(player, proximity.state)
     player.dir = update_player_dir(player, state.keyboard)
-    player.pos = update_player_pos(player, boundary.state)
+    player.pos = update_player_pos(player, boundary.state, state.keyboard)
+
     return player
 
 
@@ -248,7 +353,7 @@ def init() -> Ref:
             width=600,
             height=400,
             color='#a4b398',
-            pos=Coord(x=0, y=0)))
+            pos=Vec(x=0, y=0)))
 
     player = Entity(
         id=Ids.player,
@@ -264,7 +369,7 @@ def init() -> Ref:
             width=50,
             height=50,
             color="red",
-            pos=Coord(x=100, y=100)))
+            pos=Vec(x=100, y=100)))
 
     proximity = Entity(
         id=Ids.proximity,
@@ -272,9 +377,16 @@ def init() -> Ref:
         update_=update_proximity,
         view=view_proximity)
 
+    fov = Entity(
+        id=Ids.fov,
+        state=init_fov(player.state, bot.state),
+        update_=update_fov,
+        view=view_fov)
+
     entities = dict(
         boundary=boundary,
         proximity=proximity,
+        fov=fov,
         player=player,
         bot=bot)
 
@@ -328,6 +440,8 @@ def run_keyboard_down(dispatch, to_msg):
     def listener(event):
         msg = to_msg(event.key)
         if msg is not None:
+            if is_arrow_key(event.key):
+                event.preventDefault()
             dispatch(action(msg))
     window.addEventListener("keydown", listener)
     return lambda: window.removeEventListener("keydown", listener)
@@ -390,7 +504,18 @@ def update(ref: Ref, msg) -> Ref:
 
     if type(msg) is Tick:
         for entity in state.entities.values():
+            if entity.id in [Ids.proximity, Ids.fov]:
+                continue
             state.entities[entity.id].state = entity.update_(entity.state, state)
+
+        proximity = state.entities[state.ids.proximity]
+        proximity.state = proximity.update_(proximity.state, state)
+        state.entities[proximity.id] = proximity
+
+        fov = state.entities[state.ids.fov]
+        fov.state = fov.update_(fov.state, state)
+        state.entities[fov.id] = fov
+
         return Ref(value=state)
 
     if type(msg) is KeyChange:
@@ -409,11 +534,20 @@ def action(msg):
 
 # Views
 
-def view_viz(controller):
+def view_viz(variable, elem_id):
     def renderViz():
-        svg = FuzzyViz.varToSvg(controller.inputs.distance, dict(samples=200))
-        document.getElementById("debug-viz").innerHTML = svg
+        svg = FuzzyViz.varToSvg(variable, dict(samples=200))
+        document.getElementById(elem_id).innerHTML = svg
     window.setTimeout(renderViz, 0)
+
+
+def view_stat(key, value):
+    return Html.div({"class": "stat-field"}, [
+        Html.span({"class": "stat-label"}, [
+            Html.text(f"{key}: "),
+        ]),
+        Html.text(value)
+    ])
 
 
 def view(ref: Ref):
@@ -421,9 +555,11 @@ def view(ref: Ref):
     Visualizes the entire program state as maze of cells with controls to traverse the maze
     """
     state = ref.value
+    fov = state.entities[state.ids.fov].state
     player = state.entities[state.ids.player].state
     boundary = state.entities[state.ids.boundary].state
     proximity = state.entities[state.ids.proximity].state
+
     return Html.main({"class": "container"}, [
         Html.div({"class": "canvas"}, [
             Svg.svg(dict(
@@ -437,16 +573,35 @@ def view(ref: Ref):
             ]),
         ]),
         Html.div({"class": "stats"}, [
-            Html.div({"class": "stat-field"}, [
-                Html.span({"class": "stat-label"}, [
-                    Html.text("Distance: "),
+            Html.div({"class": "stat-row"}, [
+                Html.div({"class": "stat-column"}, [
+                    view_stat("Field of View", fov),
+                    view_stat("Input Distance", proximity.distance),
+                    view_stat("Output Brakes", Fuzzy.defuzz(
+                        player.controller.inputs,
+                        player.controller.outputs,
+                        player.controller.rules,
+                        {"distance": proximity.distance}).brakes),
+
+                    # Html.div({"class": "stat-field"}, [
+                    #     view_stat(k, v) for (k, v) in
+                    # ]),
                 ]),
-                Html.text(Fuzzy.classify(player.controller.inputs.distance, proximity.distance)),
+
+                Html.div({"class": "stat-column"}, [
+                    view_stat("Distance Type", Fuzzy.classify(player.controller.inputs.distance, proximity.distance)),
+                    view_stat("Brakes State", Fuzzy.classify(player.controller.outputs.brakes, player.brakes)),
+                ]),
             ]),
 
             Html.div({"class": "fuzzy-input-chart"}, [
-                Html.div(dict(id="debug-viz"), []),
-                view_viz(player.controller)
+                Html.div(dict(id="distance-viz"), []),
+                view_viz(player.controller.inputs.distance, "distance-viz")
+            ]),
+
+            Html.div({"class": "fuzzy-input-chart"}, [
+                Html.div(dict(id="brakes-viz"), []),
+                view_viz(player.controller.outputs.brakes, "brakes-viz")
             ]),
         ]),
     ])

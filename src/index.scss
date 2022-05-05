@@ -35,6 +35,17 @@ body {
   flex-direction: column;
   padding: 10px;
 
+  .stat-row {
+    display: flex;
+    flex: 1 1 auto;
+  }
+
+  .stat-column {
+    flex-direction: column;
+    display: flex;
+    flex: 1 1 auto;
+  }
+
   .stat-field {
     padding: 10px;
     margin-bottom: 2px;
