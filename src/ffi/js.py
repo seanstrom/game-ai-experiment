@@ -23,6 +23,9 @@ Svg = require('@hyperapp/svg')
 # Thi-ng Fuzzy FFI
 
 Fuzzy = require('@thi.ng/fuzzy')
+Fuzzy['or_'] = Fuzzy['or']
+Fuzzy['and_'] = Fuzzy['and']
+
 FuzzyViz = require('@thi.ng/fuzzy-viz')
 
 
