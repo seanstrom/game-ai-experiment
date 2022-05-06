@@ -40,6 +40,42 @@ class FuzzyLogic:
     rules: List[Any] = Any
 
 
+# Subscriptions
+
+def run_clock(dispatch, msg):
+    def send():
+        dispatch(msg)
+        run_clock(dispatch, msg)
+    id = window.requestAnimationFrame(send)
+    return lambda: window.cancelAnimationFrame(id)
+
+
+def timeout(dispatch, args):
+    (msg, ms) = args
+    def send(): dispatch(msg)
+    id = window.setTimeout(send, ms)
+    return lambda: window.clearTimeout(id)
+
+
+def interval(dispatch, args):
+    (msg, ms) = args
+    def send(): dispatch(msg)
+    id = window.setInterval(send, ms)
+    return lambda: window.clearInterval(id)
+
+
+def delay(ms, msg):
+    return [timeout, (msg, ms)]
+
+
+def every(ms, msg):
+    return [interval, (msg, ms)]
+
+
+def clock(msg):
+    return [run_clock, msg]
+
+
 # Keyboard
 
 @dataclass
@@ -71,6 +107,12 @@ def is_arrow_key(key) -> bool:
     return key in [Arrow.Up, Arrow.Down, Arrow.Left, Arrow.Right]
 
 
+def keyboard_change(is_down):
+    def to_msg(key):
+        return KeyChange(is_down=is_down, key=key)
+    return to_msg
+
+
 def to_x(keyboard):
     return (1 if keyboard.right else 0) - (1 if keyboard.left else 0)
 
@@ -79,26 +121,35 @@ def to_y(keyboard):
     return (1 if keyboard.down else 0) - (1 if keyboard.up else 0)
 
 
+def run_keyboard_up(dispatch, to_msg):
+    def listener(event):
+        msg = to_msg(event.key)
+        if msg is not None:
+            dispatch(action(msg))
+    window.addEventListener("keyup", listener)
+    return lambda: window.removeEventListener("keyup", listener)
+
+
+def keyboard_up(to_msg):
+    return [run_keyboard_up, to_msg]
+
+
+def run_keyboard_down(dispatch, to_msg):
+    def listener(event):
+        msg = to_msg(event.key)
+        if msg is not None:
+            if is_arrow_key(event.key):
+                event.preventDefault()
+            dispatch(action(msg))
+    window.addEventListener("keydown", listener)
+    return lambda: window.removeEventListener("keydown", listener)
+
+
+def keyboard_down(to_msg):
+    return [run_keyboard_down, to_msg]
+
+
 # Game
-
-@dataclass
-class Bot(Box):
-    dir: Any = Any
-
-
-@dataclass
-class Player(Box):
-    dir: Vec = Any
-    brakes: float = 0.0
-    controller: FuzzyLogic = Any
-
-
-@dataclass
-class Proximity(Box):
-    distance: float = 0.0
-    inner_rect: Box = Any
-    outer_rect: Box = Any
-
 
 @dataclass
 class Ids:
@@ -107,6 +158,30 @@ class Ids:
     player: str = "player"
     boundary: str = "boundary"
     proximity: str = "proximity"
+
+
+@dataclass
+class Pawn(Box):
+    dir: Any = Any
+
+
+@dataclass
+class Bot(Pawn):
+    aggression: float = 0.0
+    controller: FuzzyLogic = Any
+
+
+@dataclass
+class Player(Pawn):
+    dir: Vec = Any
+    brakes: float = 0.0
+
+
+@dataclass
+class Proximity(Box):
+    distance: float = 0.0
+    inner_rect: Box = Any
+    outer_rect: Box = Any
 
 
 @dataclass
@@ -231,18 +306,18 @@ def to_center_pos(pos, width, height) -> Vec:
     return Vec(x, y)
 
 
-def init_fov(player: Player, bot: Bot) -> float:
-    bot_pos = to_center_pos(bot.pos, bot.width, bot.height)
-    player_pos = to_center_pos(player.pos, player.width, player.height)
-    to_bot_dir = normalize(to_dir(player_pos, bot_pos))
-    dot = dot_product(normalize(player.dir), to_bot_dir)
+def init_fov(origin: Pawn, target: Pawn) -> float:
+    target_pos = to_center_pos(target.pos, target.width, target.height)
+    origin_pos = to_center_pos(origin.pos, origin.width, origin.height)
+    to_target_dir = normalize(to_dir(origin_pos, target_pos))
+    dot = dot_product(normalize(origin.dir), to_target_dir)
     return dot
 
 
 def update_fov(fov: float, state: State) -> float:
     bot = state.entities[state.ids.bot]
     player = state.entities[state.ids.player]
-    return init_fov(player.state, bot.state)
+    return init_fov(bot.state, player.state)
 
 
 def view_fov(fov: float):
@@ -251,38 +326,14 @@ def view_fov(fov: float):
 
 # Player
 
-def init_player(boundary: Box) -> Player:
-    boundary_diagonal = sqrt(pow(boundary.height, 2) + pow(boundary.width, 2))
-
-    controller = FuzzyLogic(
-        inputs={
-            "distance": Fuzzy.variable([0, boundary_diagonal], {
-                "near": Fuzzy.gaussian(0, 50),
-                "neutral": Fuzzy.trapezoid(32, 80, 180, 228),
-                "far": Fuzzy.ramp(100, 300)
-            })
-        },
-        outputs={
-            "brakes": Fuzzy.variable([0, 100], {
-                "low": Fuzzy.gaussian(30, 20),
-                "medium": Fuzzy.gaussian(70, 20),
-                "high": Fuzzy.gaussian(100, 10),
-            })
-        },
-        rules=[
-            Fuzzy['or']({"distance": "near",}, {"brakes": "high"}),
-            Fuzzy['or']({"distance": "neutral", }, {"brakes": "medium"}),
-            Fuzzy['or']({"distance": "far", }, {"brakes": "low"}),
-        ])
-
+def init_player() -> Player:
     return Player(
         width=50,
         height=50,
         brakes=0.0,
         color="blue",
         dir=Vec(1, 0),
-        pos=Vec(x=0, y=0),
-        controller=controller)
+        pos=Vec(x=0, y=0))
 
 
 def update_player_pos(player: Player, boundary: Box, keyboard: Keyboard) -> Vec:
@@ -317,21 +368,10 @@ def update_player_dir(player: Player, keyboard: Keyboard) -> Vec:
     return player.dir
 
 
-def update_player_brakes(player: Player, proximity: Proximity) -> float:
-    result = Fuzzy.defuzz(
-        player.controller.inputs,
-        player.controller.outputs,
-        player.controller.rules,
-        {"distance": proximity.distance})
-
-    return result.brakes
-
-
 def update_player(player: Player, state: State) -> Player:
     boundary = state.entities[state.ids.boundary]
     proximity = state.entities[state.ids.proximity]
 
-    player.brakes = update_player_brakes(player, proximity.state)
     player.dir = update_player_dir(player, state.keyboard)
     player.pos = update_player_pos(player, boundary.state, state.keyboard)
 
@@ -340,6 +380,92 @@ def update_player(player: Player, state: State) -> Player:
 
 def view_player(player: Player):
     return view_box(player)
+
+
+# Bot
+
+def init_bot(boundary: Box):
+    bot_width = 50
+    bot_height = 50
+
+    boundary_diagonal = sqrt(
+        pow(boundary.height, 2) + pow(boundary.width, 2))
+
+    boundary_center = to_center_pos(
+        boundary.pos, boundary.width, boundary.height)
+
+    bot_pos = Vec(
+        x=boundary_center.x - bot_width / 2,
+        y=boundary_center.y - bot_height / 2)
+
+    controller = FuzzyLogic(
+        inputs={
+            "distance": Fuzzy.variable([0, boundary_diagonal], {
+                "near": Fuzzy.gaussian(0, 50),
+                "neutral": Fuzzy.trapezoid(32, 80, 180, 228),
+                "far": Fuzzy.ramp(100, 300)
+            }),
+            "viewing": Fuzzy.variable([-1, 1], {
+                "hidden": Fuzzy.gaussian(-1, 0.50),
+                "visible": Fuzzy.gaussian(1, 0.50)
+            }),
+        },
+        outputs={
+            "aggression": Fuzzy.variable([0, 100], {
+                "low": Fuzzy.gaussian(30, 20),
+                "medium": Fuzzy.gaussian(70, 20),
+                "high": Fuzzy.gaussian(100, 10),
+            })
+        },
+        rules=[
+            Fuzzy.and_(
+                {"distance": "near", "viewing": "visible"},
+                {"aggression": "high"}),
+            Fuzzy.and_(
+                {"distance": "near", "viewing": "hidden"},
+                {"aggression": "medium"}),
+            Fuzzy.and_(
+                {"distance": "neutral", "viewing": "visible"},
+                {"aggression": "medium"}),
+            Fuzzy.and_(
+                {"distance": "neutral", "viewing": "hidden"},
+                {"aggression": "low"}),
+            Fuzzy.and_(
+                {"distance": "far", "viewing": "visible"},
+                {"aggression": "low"}),
+            Fuzzy.and_(
+                {"distance": "far", "viewing": "hidden"},
+                {"aggression": "low"}),
+        ])
+
+    return Bot(
+        color="red",
+        dir=Vec(1, 0),
+        pos=bot_pos,
+        width=bot_width,
+        height=bot_height,
+        controller=controller)
+
+
+def update_bot_aggression(bot: Bot, proximity: Proximity, fov: float):
+    result = Fuzzy.defuzz(
+        bot.controller.inputs,
+        bot.controller.outputs,
+        bot.controller.rules,
+        {"distance": proximity.distance, "viewing": fov})
+
+    return result.aggression
+
+
+def update_bot(bot: Bot, state: State) -> Bot:
+    fov = state.entities[state.ids.fov]
+    proximity = state.entities[state.ids.proximity]
+    bot.aggression = update_bot_aggression(bot, proximity.state, fov.state)
+    return bot
+
+
+def view_bot(bot: Bot):
+    return view_box(bot)
 
 
 # Init
@@ -357,19 +483,15 @@ def init() -> Ref:
 
     player = Entity(
         id=Ids.player,
-        state=init_player(boundary.state),
+        state=init_player(),
         update_=update_player,
         view=view_player)
 
     bot = Entity(
         id=Ids.bot,
-        update_=lambda _state: _state,
+        update_=update_bot,
         view=view_box,
-        state=Box(
-            width=50,
-            height=50,
-            color="red",
-            pos=Vec(x=100, y=100)))
+        state=init_bot(boundary.state))
 
     proximity = Entity(
         id=Ids.proximity,
@@ -397,76 +519,6 @@ def init() -> Ref:
             keyboard=Keyboard()))
 
     return state
-
-
-# Subscriptions
-
-def run_clock(dispatch, msg):
-    def send():
-        dispatch(msg)
-        run_clock(dispatch, msg)
-    id = window.requestAnimationFrame(send)
-    return lambda: window.cancelAnimationFrame(id)
-
-
-def timeout(dispatch, args):
-    (msg, ms) = args
-    def send(): dispatch(msg)
-    id = window.setTimeout(send, ms)
-    return lambda: window.clearTimeout(id)
-
-
-def interval(dispatch, args):
-    (msg, ms) = args
-    def send(): dispatch(msg)
-    id = window.setInterval(send, ms)
-    return lambda: window.clearInterval(id)
-
-
-def run_keyboard_up(dispatch, to_msg):
-    def listener(event):
-        msg = to_msg(event.key)
-        if msg is not None:
-            dispatch(action(msg))
-    window.addEventListener("keyup", listener)
-    return lambda: window.removeEventListener("keyup", listener)
-
-
-def keyboard_up(to_msg):
-    return [run_keyboard_up, to_msg]
-
-
-def run_keyboard_down(dispatch, to_msg):
-    def listener(event):
-        msg = to_msg(event.key)
-        if msg is not None:
-            if is_arrow_key(event.key):
-                event.preventDefault()
-            dispatch(action(msg))
-    window.addEventListener("keydown", listener)
-    return lambda: window.removeEventListener("keydown", listener)
-
-
-def keyboard_down(to_msg):
-    return [run_keyboard_down, to_msg]
-
-
-def delay(ms, msg):
-    return [timeout, (msg, ms)]
-
-
-def every(ms, msg):
-    return [interval, (msg, ms)]
-
-
-def clock(msg):
-    return [run_clock, msg]
-
-
-def keyboard_change(is_down):
-    def to_msg(key):
-        return KeyChange(is_down=is_down, key=key)
-    return to_msg
 
 
 def subscriptions():
@@ -550,13 +602,21 @@ def view_stat(key, value):
     ])
 
 
+def view_chart(key, value):
+    elem_id = f"{key}-viz"
+    return Html.div({"class": "fuzzy-input-chart"}, [
+        Html.div(dict(id=elem_id), []),
+        view_viz(value, elem_id)
+    ])
+
+
 def view(ref: Ref):
     """
     Visualizes the entire program state as maze of cells with controls to traverse the maze
     """
     state = ref.value
+    bot = state.entities[state.ids.bot].state
     fov = state.entities[state.ids.fov].state
-    player = state.entities[state.ids.player].state
     boundary = state.entities[state.ids.boundary].state
     proximity = state.entities[state.ids.proximity].state
 
@@ -577,32 +637,21 @@ def view(ref: Ref):
                 Html.div({"class": "stat-column"}, [
                     view_stat("Field of View", fov),
                     view_stat("Input Distance", proximity.distance),
-                    view_stat("Output Brakes", Fuzzy.defuzz(
-                        player.controller.inputs,
-                        player.controller.outputs,
-                        player.controller.rules,
-                        {"distance": proximity.distance}).brakes),
-
-                    # Html.div({"class": "stat-field"}, [
-                    #     view_stat(k, v) for (k, v) in
-                    # ]),
                 ]),
 
                 Html.div({"class": "stat-column"}, [
-                    view_stat("Distance Type", Fuzzy.classify(player.controller.inputs.distance, proximity.distance)),
-                    view_stat("Brakes State", Fuzzy.classify(player.controller.outputs.brakes, player.brakes)),
+                    view_stat(
+                        "Distance Type",
+                        Fuzzy.classify(bot.controller.inputs.distance, proximity.distance)),
+                    view_stat(
+                        "Aggression State",
+                        Fuzzy.classify(bot.controller.outputs.aggression, bot.aggression)),
                 ]),
             ]),
 
-            Html.div({"class": "fuzzy-input-chart"}, [
-                Html.div(dict(id="distance-viz"), []),
-                view_viz(player.controller.inputs.distance, "distance-viz")
-            ]),
-
-            Html.div({"class": "fuzzy-input-chart"}, [
-                Html.div(dict(id="brakes-viz"), []),
-                view_viz(player.controller.outputs.brakes, "brakes-viz")
-            ]),
+            view_chart('distance', bot.controller.inputs.distance),
+            view_chart('viewing', bot.controller.inputs.viewing),
+            view_chart('aggression', bot.controller.outputs.aggression),
         ]),
     ])
 
