@@ -753,13 +753,6 @@ def action(msg):
 
 # Views
 
-def view_viz(variable, elem_id):
-    def renderViz():
-        svg = FuzzyViz.varToSvg(variable, dict(samples=200))
-        document.getElementById(elem_id).innerHTML = svg
-    window.setTimeout(renderViz, 0)
-
-
 def view_stat(key, value):
     return Html.div({"class": "stat-field"}, [
         Html.span({"class": "stat-label"}, [
@@ -771,9 +764,9 @@ def view_stat(key, value):
 
 def view_chart(key, value):
     elem_id = f"{key}-viz"
+    svg = FuzzyViz.varToSvg(value, dict(samples=200))
     return Html.div({"class": "fuzzy-input-chart"}, [
-        Html.div(dict(id=elem_id), []),
-        view_viz(value, elem_id)
+        Html.div(dict(id=elem_id, innerHTML=svg), []),
     ])
 
 
