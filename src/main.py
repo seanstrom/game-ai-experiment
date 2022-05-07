@@ -26,6 +26,11 @@ class Box:
 
 
 @dataclass
+class Pawn(Box):
+    dir: Any = Any
+
+
+@dataclass
 class Entity:
     id: str = ""
     state: Any = Any
@@ -34,10 +39,33 @@ class Entity:
 
 
 @dataclass
+class Entities:
+    data: Dict[str, Entity] = Any
+    background: List[str] = Any
+    observers: List[str] = Any
+    pawns: List[str] = Any
+
+    def get(self, entity_id: str):
+        return self.data[entity_id]
+
+
+@dataclass
 class FuzzyLogic:
     inputs: Dict[str, Any] = Any
     outputs: Dict[str, Any] = Any
     rules: List[Any] = Any
+
+
+class RelDir:
+    Up = Vec(0, -1)
+    Down = Vec(0, 1)
+    Left = Vec(-1, 0)
+    Right = Vec(1, 0)
+    UpLeft = Vec(-1, -1)
+    UpRight = Vec(1, -1)
+    DownLeft = Vec(-1, 1)
+    DownRight = Vec(1, 1)
+    Zero = Vec(0, 0)
 
 
 def magnitude(v: Vec) -> float:
@@ -101,6 +129,13 @@ def relative_dir(origin: Box, target: Box):
 
 def is_vec_eq(a: Vec, b: Vec) -> bool:
     return a.x == b.x and a.y == b.y
+
+
+def concat(*args):
+    result = []
+    for arg in args:
+        result.extend(arg)
+    return result
 
 
 # Time
@@ -219,22 +254,6 @@ class Ids:
     proximity: str = "proximity"
 
 
-class RelDir:
-    Up = Vec(0, -1)
-    Down = Vec(0, 1)
-    Left = Vec(-1, 0)
-    Right = Vec(1, 0)
-    UpLeft = Vec(-1, -1)
-    UpRight = Vec(1, -1)
-    DownLeft = Vec(-1, 1)
-    DownRight = Vec(1, 1)
-
-
-@dataclass
-class Pawn(Box):
-    dir: Any = Any
-
-
 class BotModes:
     stop = "stop"
     start = "start"
@@ -269,7 +288,9 @@ class Proximity(Box):
 class State:
     ids: Ids = Any
     keyboard: Keyboard = Any
-    entities: Dict[str, Entity] = Any
+    entities: Entities = Any
+    update_order: List[str] = Any
+    render_order: List[str] = Any
 
 
 @dataclass
@@ -324,8 +345,8 @@ def init_proximity(player: Player, bot: Bot):
 
 
 def update_proximity(proximity: Proximity, state: State) -> Proximity:
-    bot = state.entities[Ids.bot]
-    player = state.entities[Ids.player]
+    bot = state.entities.get(Ids.bot)
+    player = state.entities.get(Ids.player)
     (outer_rect, inner_rect, distance) =\
         detect_proximity(player.state, bot.state)
 
@@ -353,8 +374,8 @@ def init_fov(origin: Pawn, target: Pawn) -> float:
 
 
 def update_fov(_fov: float, state: State) -> float:
-    bot = state.entities[state.ids.bot]
-    player = state.entities[state.ids.player]
+    bot = state.entities.get(state.ids.bot)
+    player = state.entities.get(state.ids.player)
     return init_fov(bot.state, player.state)
 
 
@@ -404,7 +425,7 @@ def update_player_dir(player: Player, keyboard: Keyboard) -> Vec:
 
 
 def update_player(player: Player, state: State) -> Player:
-    boundary = state.entities[state.ids.boundary]
+    boundary = state.entities.get(state.ids.boundary)
     player.dir = update_player_dir(player, state.keyboard)
     player.pos = update_player_pos(player, boundary.state, state.keyboard)
     return player
@@ -415,6 +436,8 @@ def view_player(player: Player):
 
 
 # Bot
+
+bot_max_steps = 10
 
 patrol_dirs = [
     (RelDir.Up, RelDir.UpRight),
@@ -428,17 +451,26 @@ patrol_dirs = [
 ]
 
 
-def init_bot(boundary: Box):
-    bot_width = 50
-    bot_height = 50
-    boundary_center = to_center_pos(boundary)
+bot_speeds = {
+    f"{BotModes.stop}": 0.0,
+    f"{BotModes.start}": 0.5,
+    f"{BotModes.restart}": 0.8,
+    f"{BotModes.patrol}": 0.8,
+    f"{BotModes.pursue}": 1.1,
+    f"{BotModes.attack}": 2.0,
+}
 
+
+def init_bot(boundary: Box):
+    width = 50
+    height = 50
+    boundary_center = to_center_pos(boundary)
     boundary_diagonal = sqrt(
         pow(boundary.height, 2) + pow(boundary.width, 2))
 
-    bot_pos = Vec(
-        x=boundary_center.x - bot_width / 2,
-        y=boundary_center.y - bot_height / 2)
+    pos = Vec(
+        x=boundary_center.x - width / 2,
+        y=boundary_center.y - height / 2)
 
     controller = FuzzyLogic(
         inputs={
@@ -481,13 +513,13 @@ def init_bot(boundary: Box):
         ])
 
     return Bot(
-        steps=1,
         color="red",
-        dir=Vec(0, 0),
-        pos=bot_pos,
+        pos=pos,
+        width=width,
+        height=height,
+        dir=RelDir.Zero,
         mode=BotModes.start,
-        width=bot_width,
-        height=bot_height,
+        steps=bot_max_steps,
         controller=controller)
 
 
@@ -525,15 +557,7 @@ def update_bot_mode(bot: Bot, boundary: Box) -> str:
         else:
             return BotModes.patrol
 
-    if bot.mode is BotModes.pursue:
-        if aggression_level is "high":
-            return BotModes.attack
-        elif aggression_level is "medium":
-            return BotModes.pursue
-        else:
-            return BotModes.restart
-
-    if bot.mode is BotModes.attack:
+    if bot.mode in [BotModes.pursue, BotModes.attack]:
         if aggression_level is "high":
             return BotModes.attack
         elif aggression_level is "medium":
@@ -563,27 +587,8 @@ def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
 
 
 def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
-    def multi(mode):
-        if mode is BotModes.stop:
-            return 0.0
-        if mode is BotModes.start:
-            return 0.5
-        if mode is BotModes.restart:
-            return 0.5
-        if mode is BotModes.patrol:
-            return 0.75
-        if mode is BotModes.attack:
-            return 1
-        if mode is BotModes.patrol:
-            return 0.75
-        return 1
-
-    def base_speed(mode):
-        return 1
-
     dt = 1.666
-    speed = base_speed(bot.mode) * multi(bot.mode)
-
+    speed = 1 * (bot_speeds[bot.mode] or 1)
     x = bot.pos.x + (bot.dir.x * speed * dt)
     y = bot.pos.y + (bot.dir.y * speed * dt)
 
@@ -608,10 +613,10 @@ def update_bot_steps(bot: Bot) -> int:
 
 
 def update_bot(bot: Bot, state: State) -> Bot:
-    fov = state.entities[state.ids.fov]
-    player = state.entities[state.ids.player]
-    boundary = state.entities[state.ids.boundary]
-    proximity = state.entities[state.ids.proximity]
+    fov = state.entities.get(state.ids.fov)
+    player = state.entities.get(state.ids.player)
+    boundary = state.entities.get(state.ids.boundary)
+    proximity = state.entities.get(state.ids.proximity)
     bot.steps = update_bot_steps(bot)
     bot.aggression = update_bot_aggression(bot, proximity.state, fov.state)
     bot.mode = update_bot_mode(bot, boundary.state)
@@ -661,17 +666,33 @@ def init() -> Ref:
         update_=update_fov,
         view=view_fov)
 
-    entities = dict(
-        boundary=boundary,
-        proximity=proximity,
-        fov=fov,
-        player=player,
-        bot=bot)
+    entities = Entities(
+        background=[Ids.boundary],
+        observers=[Ids.fov, Ids.proximity],
+        pawns=[Ids.player, Ids.bot],
+        data=dict(
+            bot=bot,
+            fov=fov,
+            player=player,
+            boundary=boundary,
+            proximity=proximity))
+
+    update_order = concat(
+        entities.background,
+        entities.pawns,
+        entities.observers)
+
+    render_order = concat(
+        entities.background,
+        entities.observers,
+        entities.pawns)
 
     state = Ref(
         value=State(
             ids=Ids(),
             entities=entities,
+            update_order=update_order,
+            render_order=render_order,
             keyboard=Keyboard()))
 
     return state
@@ -691,13 +712,13 @@ def subscriptions():
 def update_keyboard(state, msg):
     keyboard = state.keyboard
 
-    if msg.key is "ArrowUp":
+    if msg.key is ArrowKeys.Up:
         keyboard.up = msg.is_down
-    if msg.key is "ArrowDown":
+    if msg.key is ArrowKeys.Down:
         keyboard.down = msg.is_down
-    if msg.key is "ArrowLeft":
+    if msg.key is ArrowKeys.Left:
         keyboard.left = msg.is_down
-    if msg.key is "ArrowRight":
+    if msg.key is ArrowKeys.Right:
         keyboard.right = msg.is_down
 
     return keyboard
@@ -711,18 +732,9 @@ def update(ref: Ref, msg) -> Ref:
     state = ref.value
 
     if type(msg) is Tick:
-        for entity in state.entities.values():
-            if entity.id in [Ids.proximity, Ids.fov]:
-                continue
-            state.entities[entity.id].state = entity.update_(entity.state, state)
-
-        proximity = state.entities[state.ids.proximity]
-        proximity.state = proximity.update_(proximity.state, state)
-        state.entities[proximity.id] = proximity
-
-        fov = state.entities[state.ids.fov]
-        fov.state = fov.update_(fov.state, state)
-        state.entities[fov.id] = fov
+        for entity_id in state.update_order:
+            entity = state.entities.get(entity_id)
+            entity.state = entity.update_(entity.state, state)
 
         return Ref(value=state)
 
@@ -778,10 +790,13 @@ def view(ref: Ref):
     Visualizes the entire program state as maze of cells with controls to traverse the maze
     """
     state = ref.value
-    bot = state.entities[state.ids.bot].state
-    fov = state.entities[state.ids.fov].state
-    boundary = state.entities[state.ids.boundary].state
-    proximity = state.entities[state.ids.proximity].state
+    bot = state.entities.get(state.ids.bot).state
+    fov = state.entities.get(state.ids.fov).state
+    boundary = state.entities.get(state.ids.boundary).state
+    proximity = state.entities.get(state.ids.proximity).state
+
+    def render_entity(entity):
+        return entity.view(entity.state)
 
     return Html.main({"class": "container"}, [
         Html.div({"class": "canvas"}, [
@@ -791,7 +806,7 @@ def view(ref: Ref):
                 viewBox=f"0 0 {boundary.width} {boundary.height}",
             ), [
                 Svg.g({}, [
-                    entity.view(entity.state) for entity in state.entities.values()
+                    render_entity(state.entities.get(entity_id)) for entity_id in state.render_order
                 ])
             ]),
         ]),
