@@ -96,7 +96,7 @@ def is_centered_within(box: Box, boundary: Box):
     boundary_pos = to_center_pos(boundary)
     x = round(abs(bot_pos.x - boundary_pos.x))
     y = round(abs(bot_pos.y - boundary_pos.y))
-    is_centered = x <= 2.5 and y <= 2.5
+    is_centered = x <= 1 and y <= 1
     return is_centered
 
 
@@ -437,7 +437,7 @@ def view_player(player: Player):
 
 # Bot
 
-bot_max_steps = 10
+bot_max_steps = 20
 
 patrol_dirs = [
     (RelDir.Up, RelDir.UpRight),
@@ -453,10 +453,10 @@ patrol_dirs = [
 
 bot_speeds = {
     f"{BotModes.stop}": 0.0,
-    f"{BotModes.start}": 0.5,
+    f"{BotModes.start}": 0.0,
     f"{BotModes.restart}": 0.8,
     f"{BotModes.patrol}": 0.8,
-    f"{BotModes.pursue}": 1.1,
+    f"{BotModes.pursue}": 1.3,
     f"{BotModes.attack}": 2.0,
 }
 
@@ -489,7 +489,7 @@ def init_bot(boundary: Box):
                 "low": Fuzzy.gaussian(30, 20),
                 "medium": Fuzzy.gaussian(70, 20),
                 "high": Fuzzy.gaussian(100, 10),
-            })
+            }),
         },
         rules=[
             Fuzzy.and_(
@@ -606,10 +606,10 @@ def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
 def update_bot_steps(bot: Bot) -> int:
     if bot.mode is BotModes.patrol:
         if bot.steps == 0:
-            return 1
+            return bot_max_steps
         return bot.steps - 1
     else:
-        return 1
+        return bot_max_steps
 
 
 def update_bot(bot: Bot, state: State) -> Bot:
