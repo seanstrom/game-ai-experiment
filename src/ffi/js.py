@@ -35,6 +35,8 @@ window = require('global/window')
 console = require('global/console')
 document = require('global/document')
 
+is_nan = window.Number.js_isNaN
+
 
 # JSON
 
