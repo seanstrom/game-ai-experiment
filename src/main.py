@@ -1,6 +1,6 @@
 from math import sqrt
-from typing import Any, Dict, List, Callable
 from dataclasses import dataclass
+from typing import Any, Dict, List, Callable
 from ffi.js import document, is_nan, window, Html, Hyper, Svg, Fuzzy, FuzzyViz
 
 
@@ -27,7 +27,7 @@ class Box:
 
 @dataclass
 class Pawn(Box):
-    dir: Any = Any
+    dir: Vec = Any
 
 
 @dataclass
@@ -176,13 +176,6 @@ def clock(msg):
 
 # Keyboard
 
-class ArrowKeys:
-    Up = "ArrowUp"
-    Down = "ArrowDown"
-    Left = "ArrowLeft"
-    Right = "ArrowRight"
-
-
 @dataclass
 class Keyboard:
     up: bool = False
@@ -195,6 +188,13 @@ class Keyboard:
 class KeyChange:
     key: str = ""
     is_down: bool = False
+
+
+class ArrowKeys:
+    Up = "ArrowUp"
+    Down = "ArrowDown"
+    Left = "ArrowLeft"
+    Right = "ArrowRight"
 
 
 def is_arrow_key(key) -> bool:
@@ -258,10 +258,32 @@ class BotModes:
     stop = "stop"
     start = "start"
     restart = "restart"
-
     patrol = "patrol"
     pursue = "pursue"
     attack = "attack"
+
+
+@dataclass()
+class BotConfig:
+    max_steps = 20
+    patrol_dirs = [
+        (RelDir.Up, RelDir.UpRight),
+        (RelDir.UpRight, RelDir.Right),
+        (RelDir.Right, RelDir.DownRight),
+        (RelDir.DownRight, RelDir.Down),
+        (RelDir.Down, RelDir.DownLeft),
+        (RelDir.DownLeft, RelDir.Left),
+        (RelDir.Left, RelDir.UpLeft),
+        (RelDir.UpLeft, RelDir.Up),
+    ]
+    speeds = {
+        f"{BotModes.stop}": 0.0,
+        f"{BotModes.start}": 0.0,
+        f"{BotModes.restart}": 0.8,
+        f"{BotModes.patrol}": 0.8,
+        f"{BotModes.pursue}": 1.3,
+        f"{BotModes.attack}": 2.0,
+    }
 
 
 @dataclass
@@ -270,6 +292,7 @@ class Bot(Pawn):
     aggression: float = 0.0
     mode: str = BotModes.start
     controller: FuzzyLogic = Any
+    config: BotConfig = BotConfig
 
 
 @dataclass
@@ -300,7 +323,7 @@ class Ref:
 
 # Proximity
 
-def make_outer_rect(player: Player, bot: Bot):
+def make_outer_rect(player: Player, bot: Bot) -> Box:
     x = min(player.pos.x, bot.pos.x)
     y = min(player.pos.y, bot.pos.y)
 
@@ -312,10 +335,10 @@ def make_outer_rect(player: Player, bot: Bot):
         bot.pos.y + bot.height - player.pos.y,
         player.pos.y + player.height - bot.pos.y)
 
-    return Box(color="yellow", height=height, width=width, pos=Vec(x=x, y=y))
+    return Box(color="yellow", height=height, width=width, pos=Vec(x, y))
 
 
-def make_inner_rect(outer_rect: Box, player: Player, bot: Bot):
+def make_inner_rect(outer_rect: Box, player: Player, bot: Bot) -> Box:
     x = min(min(player.pos.x + player.width, bot.pos.x + bot.width),
             max(player.pos.x, bot.pos.x))
 
@@ -325,10 +348,10 @@ def make_inner_rect(outer_rect: Box, player: Player, bot: Bot):
     width = abs(outer_rect.width - player.width - bot.width)
     height = abs(outer_rect.height - player.height - bot.height)
 
-    return Box(color="green", height=height, width=width, pos=Vec(x=x, y=y))
+    return Box(color="green", height=height, width=width, pos=Vec(x, y))
 
 
-def detect_proximity(player: Player, bot: Bot):
+def detect_proximity(player: Player, bot: Bot) -> (Box, Box, float):
     outer_rect = make_outer_rect(player, bot)
     inner_rect = make_inner_rect(outer_rect, player, bot)
 
@@ -339,14 +362,14 @@ def detect_proximity(player: Player, bot: Bot):
     return (outer_rect, inner_rect, min_distance)
 
 
-def init_proximity(player: Player, bot: Bot):
+def init_proximity(player: Player, bot: Bot) -> Proximity:
     (outer_rect, inner_rect, distance) = detect_proximity(player, bot)
     return Proximity(distance=distance, outer_rect=outer_rect, inner_rect=inner_rect)
 
 
 def update_proximity(proximity: Proximity, state: State) -> Proximity:
-    bot = state.entities.get(Ids.bot)
-    player = state.entities.get(Ids.player)
+    bot = state.entities.get(state.ids.bot)
+    player = state.entities.get(state.ids.player)
     (outer_rect, inner_rect, distance) =\
         detect_proximity(player.state, bot.state)
 
@@ -379,7 +402,7 @@ def update_fov(_fov: float, state: State) -> float:
     return init_fov(bot.state, player.state)
 
 
-def view_fov(fov: float):
+def view_fov(fov: float, state: State):
     return None
 
 
@@ -437,33 +460,10 @@ def view_player(player: Player):
 
 # Bot
 
-bot_max_steps = 20
-
-patrol_dirs = [
-    (RelDir.Up, RelDir.UpRight),
-    (RelDir.UpRight, RelDir.Right),
-    (RelDir.Right, RelDir.DownRight),
-    (RelDir.DownRight, RelDir.Down),
-    (RelDir.Down, RelDir.DownLeft),
-    (RelDir.DownLeft, RelDir.Left),
-    (RelDir.Left, RelDir.UpLeft),
-    (RelDir.UpLeft, RelDir.Up),
-]
-
-
-bot_speeds = {
-    f"{BotModes.stop}": 0.0,
-    f"{BotModes.start}": 0.0,
-    f"{BotModes.restart}": 0.8,
-    f"{BotModes.patrol}": 0.8,
-    f"{BotModes.pursue}": 1.3,
-    f"{BotModes.attack}": 2.0,
-}
-
-
 def init_bot(boundary: Box):
     width = 50
     height = 50
+    config = BotConfig()
     boundary_center = to_center_pos(boundary)
     boundary_diagonal = sqrt(
         pow(boundary.height, 2) + pow(boundary.width, 2))
@@ -515,11 +515,12 @@ def init_bot(boundary: Box):
     return Bot(
         color="red",
         pos=pos,
+        config=config,
         width=width,
         height=height,
         dir=RelDir.Zero,
         mode=BotModes.start,
-        steps=bot_max_steps,
+        steps=config.max_steps,
         controller=controller)
 
 
@@ -576,10 +577,10 @@ def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
         return relative_dir(bot, player)
 
     if bot.mode is BotModes.stop:
-        return Vec(0, 0)
+        return RelDir.Zero
 
     if bot.mode is BotModes.patrol and bot.steps is 0:
-        for (prev_dir, next_dir) in patrol_dirs:
+        for (prev_dir, next_dir) in bot.config.patrol_dirs:
             if is_vec_eq(bot.dir, prev_dir):
                 return next_dir
 
@@ -588,7 +589,7 @@ def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
 
 def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
     dt = 1.666
-    speed = 1 * (bot_speeds[bot.mode] or 1)
+    speed = 1 * (bot.config.speeds[bot.mode] or 1)
     x = bot.pos.x + (bot.dir.x * speed * dt)
     y = bot.pos.y + (bot.dir.y * speed * dt)
 
@@ -606,10 +607,10 @@ def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
 def update_bot_steps(bot: Bot) -> int:
     if bot.mode is BotModes.patrol:
         if bot.steps == 0:
-            return bot_max_steps
+            return bot.config.max_steps
         return bot.steps - 1
     else:
-        return bot_max_steps
+        return bot.config.max_steps
 
 
 def update_bot(bot: Bot, state: State) -> Bot:
@@ -843,3 +844,4 @@ def main():
     """
     element = document.getElementById("root")
     Hyper.app(node=element, view=view, init=init, subscriptions=subscriptions)
+
