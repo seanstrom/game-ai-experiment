@@ -1,7 +1,7 @@
 from math import sqrt
 from typing import Any, Dict, List, Callable
 from dataclasses import dataclass
-from ffi.js import asdict, document, window, Html, Hyper, Svg, Fuzzy, FuzzyViz
+from ffi.js import document, is_nan, window, Html, Hyper, Svg, Fuzzy, FuzzyViz
 
 
 # Platform
@@ -113,11 +113,11 @@ def keyboard_change(is_down):
     return to_msg
 
 
-def to_x(keyboard):
+def to_x_dir(keyboard):
     return (1 if keyboard.right else 0) - (1 if keyboard.left else 0)
 
 
-def to_y(keyboard):
+def to_y_dir(keyboard):
     return (1 if keyboard.down else 0) - (1 if keyboard.up else 0)
 
 
@@ -165,16 +165,27 @@ class Pawn(Box):
     dir: Any = Any
 
 
+class BotModes:
+    stop = "stop"
+    start = "start"
+    restart = "restart"
+
+    patrol = "patrol"
+    pursue = "pursue"
+    attack = "attack"
+
+
 @dataclass
 class Bot(Pawn):
+    steps: int = 0
     aggression: float = 0.0
+    mode: str = BotModes.start
     controller: FuzzyLogic = Any
 
 
 @dataclass
 class Player(Pawn):
     dir: Vec = Any
-    brakes: float = 0.0
 
 
 @dataclass
@@ -291,8 +302,10 @@ def to_dir(start: Vec, end: Vec) -> Vec:
 
 def normalize(v: Vec) -> Vec:
     mag = magnitude(v)
-    x = v.x / mag
-    y = v.y / mag
+    normalized_x = v.x / mag
+    normalized_y = v.y / mag
+    x = 0 if is_nan(normalized_x) else normalized_x
+    y = 0 if is_nan(normalized_y) else normalized_y
     return Vec(x, y)
 
 
@@ -314,7 +327,7 @@ def init_fov(origin: Pawn, target: Pawn) -> float:
     return dot
 
 
-def update_fov(fov: float, state: State) -> float:
+def update_fov(_fov: float, state: State) -> float:
     bot = state.entities[state.ids.bot]
     player = state.entities[state.ids.player]
     return init_fov(bot.state, player.state)
@@ -330,7 +343,6 @@ def init_player() -> Player:
     return Player(
         width=50,
         height=50,
-        brakes=0.0,
         color="blue",
         dir=Vec(1, 0),
         pos=Vec(x=0, y=0))
@@ -339,12 +351,10 @@ def init_player() -> Player:
 def update_player_pos(player: Player, boundary: Box, keyboard: Keyboard) -> Vec:
     dt = 1.666
     speed_multiplier = 3
-    brakes = (player.brakes / 100)
-    base_speed = max(0.0, 1.0 - brakes)
-    speed = base_speed * speed_multiplier
+    speed = 1.0 * speed_multiplier
 
-    x = player.pos.x + (to_x(keyboard) * speed * dt)
-    y = player.pos.y + (to_y(keyboard) * speed * dt)
+    x = player.pos.x + (to_x_dir(keyboard) * speed * dt)
+    y = player.pos.y + (to_y_dir(keyboard) * speed * dt)
 
     player.pos.x = min(
         max(boundary.pos.x, x),
@@ -358,8 +368,8 @@ def update_player_pos(player: Player, boundary: Box, keyboard: Keyboard) -> Vec:
 
 
 def update_player_dir(player: Player, keyboard: Keyboard) -> Vec:
-    x = to_x(keyboard)
-    y = to_y(keyboard)
+    x = to_x_dir(keyboard)
+    y = to_y_dir(keyboard)
 
     if x != 0 or y != 0:
         player.dir.x = x
@@ -383,6 +393,15 @@ def view_player(player: Player):
 
 
 # Bot
+
+def is_bot_centered(bot: Bot, boundary: Box):
+    bot_pos = to_center_pos(bot.pos, bot.width, bot.height)
+    boundary_pos = to_center_pos(boundary.pos, boundary.width, boundary.height)
+    x = round(abs(bot_pos.x - boundary_pos.x))
+    y = round(abs(bot_pos.y - boundary_pos.y))
+    is_centered = x <= 2.5 and y <= 2.5
+    return is_centered
+
 
 def init_bot(boundary: Box):
     bot_width = 50
@@ -439,28 +458,176 @@ def init_bot(boundary: Box):
         ])
 
     return Bot(
+        steps=1,
         color="red",
-        dir=Vec(1, 0),
+        dir=Vec(0, 0),
         pos=bot_pos,
+        mode=BotModes.start,
         width=bot_width,
         height=bot_height,
         controller=controller)
 
 
-def update_bot_aggression(bot: Bot, proximity: Proximity, fov: float):
+def update_bot_aggression(bot: Bot, proximity: Proximity, fov: float) -> float:
     result = Fuzzy.defuzz(
         bot.controller.inputs,
         bot.controller.outputs,
         bot.controller.rules,
         {"distance": proximity.distance, "viewing": fov})
-
     return result.aggression
+
+
+def update_bot_mode(bot: Bot, boundary: Box) -> str:
+    aggression_level = Fuzzy.classify(
+        bot.controller.outputs.aggression, bot.aggression)
+
+    if bot.mode is BotModes.start:
+        is_centered = is_bot_centered(bot, boundary)
+        if is_centered:
+            return BotModes.patrol
+        else:
+            return BotModes.start
+
+    if bot.mode is BotModes.restart:
+        if aggression_level in ["medium", "high"]:
+            return BotModes.pursue
+        elif is_bot_centered(bot, boundary):
+            return BotModes.patrol
+        else:
+            return BotModes.restart
+
+    if bot.mode is BotModes.patrol:
+        if aggression_level in ["medium", "high"]:
+            return BotModes.pursue
+        else:
+            return BotModes.patrol
+
+    if bot.mode is BotModes.pursue:
+        if aggression_level is "high":
+            return BotModes.attack
+        elif aggression_level is "medium":
+            return BotModes.pursue
+        else:
+            return BotModes.restart
+
+    if bot.mode is BotModes.attack:
+        if aggression_level is "high":
+            return BotModes.attack
+        elif aggression_level is "medium":
+            return BotModes.pursue
+        else:
+            return BotModes.restart
+
+    return bot.mode
+
+
+def relative_target_dir(origin: Box, target: Box):
+    origin_center = to_center_pos(origin.pos, origin.width, origin.height)
+    target_center = to_center_pos(target.pos, target.width, target.height)
+
+    if origin_center.x > target_center.x:
+        x = -1
+    elif origin_center.x < target_center.x:
+        x = 1
+    else:
+        x = 0
+
+    if origin_center.y > target_center.y:
+        y = -1
+    elif origin_center.y < target_center.y:
+        y = 1
+    else:
+        y = 0
+
+    return Vec(x, y)
+
+
+def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
+    if bot.mode in [BotModes.start, BotModes.restart]:
+        return relative_target_dir(bot, boundary)
+
+    if bot.mode in [BotModes.pursue, BotModes.attack]:
+        return relative_target_dir(bot, player)
+
+    if bot.mode is BotModes.stop:
+        return Vec(0, 0)
+
+    if bot.mode is BotModes.patrol and bot.steps is 0:
+        if bot.dir.x is -1 and bot.dir.y is -1:
+            return Vec(0, -1)
+        if bot.dir.x is 0 and bot.dir.y is -1:
+            return Vec(1, -1)
+        if bot.dir.x is 1 and bot.dir.y is -1:
+            return Vec(1, 0)
+        if bot.dir.x is 1 and bot.dir.y is 0:
+            return Vec(1, 1)
+        if bot.dir.x is 1 and bot.dir.y is 1:
+            return Vec(0, 1)
+        if bot.dir.x is 0 and bot.dir.y is 1:
+            return Vec(-1, 1)
+        if bot.dir.x is -1 and bot.dir.y is 1:
+            return Vec(-1, 0)
+        if bot.dir.x is -1 and bot.dir.y is 0:
+            return Vec(-1, -1)
+
+    return bot.dir
+
+
+def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
+    def multi(mode):
+        if mode is BotModes.stop:
+            return 0.0
+        if mode is BotModes.start:
+            return 0.5
+        if mode is BotModes.restart:
+            return 0.5
+        if mode is BotModes.patrol:
+            return 0.75
+        if mode is BotModes.attack:
+            return 1
+        if mode is BotModes.patrol:
+            return 0.75
+        return 1
+
+    def base_speed(mode):
+        return 1
+
+    dt = 1.666
+    speed = base_speed(bot.mode) * multi(bot.mode)
+
+    x = bot.pos.x + (bot.dir.x * speed * dt)
+    y = bot.pos.y + (bot.dir.y * speed * dt)
+
+    min_x = min(
+        max(boundary.pos.x, x),
+        boundary.pos.x + boundary.width - bot.width)
+
+    min_y = min(
+        max(boundary.pos.y, y),
+        boundary.pos.y + boundary.height - bot.height)
+
+    return Vec(x=min_x, y=min_y)
+
+
+def update_bot_steps(bot: Bot):
+    if bot.mode is BotModes.patrol:
+        if bot.steps == 0:
+            return 1
+        return bot.steps - 1
+    else:
+        return 1
 
 
 def update_bot(bot: Bot, state: State) -> Bot:
     fov = state.entities[state.ids.fov]
+    player = state.entities[state.ids.player]
+    boundary = state.entities[state.ids.boundary]
     proximity = state.entities[state.ids.proximity]
+    bot.steps = update_bot_steps(bot)
     bot.aggression = update_bot_aggression(bot, proximity.state, fov.state)
+    bot.mode = update_bot_mode(bot, boundary.state)
+    bot.dir = update_bot_dir(bot, player.state, boundary.state)
+    bot.pos = update_bot_pos(bot, boundary.state)
     return bot
 
 
@@ -501,7 +668,7 @@ def init() -> Ref:
 
     fov = Entity(
         id=Ids.fov,
-        state=init_fov(player.state, bot.state),
+        state=init_fov(bot.state, player.state),
         update_=update_fov,
         view=view_fov)
 
