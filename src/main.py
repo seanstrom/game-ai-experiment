@@ -40,7 +40,70 @@ class FuzzyLogic:
     rules: List[Any] = Any
 
 
-# Subscriptions
+def magnitude(v: Vec) -> float:
+    return sqrt(pow(v.x, 2) + pow(v.y, 2))
+
+
+def normalize(v: Vec) -> Vec:
+    mag = magnitude(v)
+    normalized_x = v.x / mag
+    normalized_y = v.y / mag
+    x = 0 if is_nan(normalized_x) else normalized_x
+    y = 0 if is_nan(normalized_y) else normalized_y
+    return Vec(x, y)
+
+
+def dot_product(a: Vec, b: Vec) -> float:
+    return a.x * b.x + a.y * b.y
+
+
+def to_center_pos(box: Box) -> Vec:
+    x = box.pos.x + box.width / 2
+    y = box.pos.y + box.height / 2
+    return Vec(x, y)
+
+
+def is_centered_within(box: Box, boundary: Box):
+    bot_pos = to_center_pos(box)
+    boundary_pos = to_center_pos(boundary)
+    x = round(abs(bot_pos.x - boundary_pos.x))
+    y = round(abs(bot_pos.y - boundary_pos.y))
+    is_centered = x <= 2.5 and y <= 2.5
+    return is_centered
+
+
+def to_dir(start: Vec, end: Vec) -> Vec:
+    x = end.x - start.x
+    y = end.y - start.y
+    return Vec(x, y)
+
+
+def relative_dir(origin: Box, target: Box):
+    origin_center = to_center_pos(origin)
+    target_center = to_center_pos(target)
+
+    if origin_center.x > target_center.x:
+        x = -1
+    elif origin_center.x < target_center.x:
+        x = 1
+    else:
+        x = 0
+
+    if origin_center.y > target_center.y:
+        y = -1
+    elif origin_center.y < target_center.y:
+        y = 1
+    else:
+        y = 0
+
+    return Vec(x, y)
+
+
+def is_vec_eq(a: Vec, b: Vec) -> bool:
+    return a.x == b.x and a.y == b.y
+
+
+# Time
 
 def run_clock(dispatch, msg):
     def send():
@@ -78,6 +141,13 @@ def clock(msg):
 
 # Keyboard
 
+class ArrowKeys:
+    Up = "ArrowUp"
+    Down = "ArrowDown"
+    Left = "ArrowLeft"
+    Right = "ArrowRight"
+
+
 @dataclass
 class Keyboard:
     up: bool = False
@@ -87,24 +157,13 @@ class Keyboard:
 
 
 @dataclass
-class ArrowKeys:
-    Up = "ArrowUp"
-    Down = "ArrowDown"
-    Left = "ArrowLeft"
-    Right = "ArrowRight"
-
-
-@dataclass
 class KeyChange:
     key: str = ""
     is_down: bool = False
 
 
-Arrow = ArrowKeys()
-
-
 def is_arrow_key(key) -> bool:
-    return key in [Arrow.Up, Arrow.Down, Arrow.Left, Arrow.Right]
+    return key in [ArrowKeys.Up, ArrowKeys.Down, ArrowKeys.Left, ArrowKeys.Right]
 
 
 def keyboard_change(is_down):
@@ -160,6 +219,17 @@ class Ids:
     proximity: str = "proximity"
 
 
+class RelDir:
+    Up = Vec(0, -1)
+    Down = Vec(0, 1)
+    Left = Vec(-1, 0)
+    Right = Vec(1, 0)
+    UpLeft = Vec(-1, -1)
+    UpRight = Vec(1, -1)
+    DownLeft = Vec(-1, 1)
+    DownRight = Vec(1, 1)
+
+
 @dataclass
 class Pawn(Box):
     dir: Any = Any
@@ -185,7 +255,7 @@ class Bot(Pawn):
 
 @dataclass
 class Player(Pawn):
-    dir: Vec = Any
+    pass
 
 
 @dataclass
@@ -205,22 +275,6 @@ class State:
 @dataclass
 class Ref:
     value: State = Any
-
-
-# Box
-
-def view_box(box: Box):
-    stroke_width = 2
-    stroke_color = "#706660"
-
-    return Svg.rect({
-        "fill": box.color,
-        "width": box.width,
-        "height": box.height,
-        "stroke": stroke_color,
-        "stroke-width": stroke_width,
-        "transform": f"translate({box.pos.x}, {box.pos.y})",
-    })
 
 
 # Proximity
@@ -290,38 +344,9 @@ def view_proximity(proximity: Proximity):
 
 # Field of View
 
-def magnitude(v: Vec) -> float:
-    return sqrt(pow(v.x, 2) + pow(v.y, 2))
-
-
-def to_dir(start: Vec, end: Vec) -> Vec:
-    x = end.x - start.x
-    y = end.y - start.y
-    return Vec(x, y)
-
-
-def normalize(v: Vec) -> Vec:
-    mag = magnitude(v)
-    normalized_x = v.x / mag
-    normalized_y = v.y / mag
-    x = 0 if is_nan(normalized_x) else normalized_x
-    y = 0 if is_nan(normalized_y) else normalized_y
-    return Vec(x, y)
-
-
-def dot_product(a: Vec, b: Vec) -> float:
-    return a.x * b.x + a.y * b.y
-
-
-def to_center_pos(pos, width, height) -> Vec:
-    x = pos.x + width / 2
-    y = pos.y + height / 2
-    return Vec(x, y)
-
-
 def init_fov(origin: Pawn, target: Pawn) -> float:
-    target_pos = to_center_pos(target.pos, target.width, target.height)
-    origin_pos = to_center_pos(origin.pos, origin.width, origin.height)
+    target_pos = to_center_pos(target)
+    origin_pos = to_center_pos(origin)
     to_target_dir = normalize(to_dir(origin_pos, target_pos))
     dot = dot_product(normalize(origin.dir), to_target_dir)
     return dot
@@ -380,11 +405,8 @@ def update_player_dir(player: Player, keyboard: Keyboard) -> Vec:
 
 def update_player(player: Player, state: State) -> Player:
     boundary = state.entities[state.ids.boundary]
-    proximity = state.entities[state.ids.proximity]
-
     player.dir = update_player_dir(player, state.keyboard)
     player.pos = update_player_pos(player, boundary.state, state.keyboard)
-
     return player
 
 
@@ -394,24 +416,25 @@ def view_player(player: Player):
 
 # Bot
 
-def is_bot_centered(bot: Bot, boundary: Box):
-    bot_pos = to_center_pos(bot.pos, bot.width, bot.height)
-    boundary_pos = to_center_pos(boundary.pos, boundary.width, boundary.height)
-    x = round(abs(bot_pos.x - boundary_pos.x))
-    y = round(abs(bot_pos.y - boundary_pos.y))
-    is_centered = x <= 2.5 and y <= 2.5
-    return is_centered
+patrol_dirs = [
+    (RelDir.Up, RelDir.UpRight),
+    (RelDir.UpRight, RelDir.Right),
+    (RelDir.Right, RelDir.DownRight),
+    (RelDir.DownRight, RelDir.Down),
+    (RelDir.Down, RelDir.DownLeft),
+    (RelDir.DownLeft, RelDir.Left),
+    (RelDir.Left, RelDir.UpLeft),
+    (RelDir.UpLeft, RelDir.Up),
+]
 
 
 def init_bot(boundary: Box):
     bot_width = 50
     bot_height = 50
+    boundary_center = to_center_pos(boundary)
 
     boundary_diagonal = sqrt(
         pow(boundary.height, 2) + pow(boundary.width, 2))
-
-    boundary_center = to_center_pos(
-        boundary.pos, boundary.width, boundary.height)
 
     bot_pos = Vec(
         x=boundary_center.x - bot_width / 2,
@@ -482,7 +505,7 @@ def update_bot_mode(bot: Bot, boundary: Box) -> str:
         bot.controller.outputs.aggression, bot.aggression)
 
     if bot.mode is BotModes.start:
-        is_centered = is_bot_centered(bot, boundary)
+        is_centered = is_centered_within(bot, boundary)
         if is_centered:
             return BotModes.patrol
         else:
@@ -491,7 +514,7 @@ def update_bot_mode(bot: Bot, boundary: Box) -> str:
     if bot.mode is BotModes.restart:
         if aggression_level in ["medium", "high"]:
             return BotModes.pursue
-        elif is_bot_centered(bot, boundary):
+        elif is_centered_within(bot, boundary):
             return BotModes.patrol
         else:
             return BotModes.restart
@@ -521,54 +544,20 @@ def update_bot_mode(bot: Bot, boundary: Box) -> str:
     return bot.mode
 
 
-def relative_target_dir(origin: Box, target: Box):
-    origin_center = to_center_pos(origin.pos, origin.width, origin.height)
-    target_center = to_center_pos(target.pos, target.width, target.height)
-
-    if origin_center.x > target_center.x:
-        x = -1
-    elif origin_center.x < target_center.x:
-        x = 1
-    else:
-        x = 0
-
-    if origin_center.y > target_center.y:
-        y = -1
-    elif origin_center.y < target_center.y:
-        y = 1
-    else:
-        y = 0
-
-    return Vec(x, y)
-
-
 def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
     if bot.mode in [BotModes.start, BotModes.restart]:
-        return relative_target_dir(bot, boundary)
+        return relative_dir(bot, boundary)
 
     if bot.mode in [BotModes.pursue, BotModes.attack]:
-        return relative_target_dir(bot, player)
+        return relative_dir(bot, player)
 
     if bot.mode is BotModes.stop:
         return Vec(0, 0)
 
     if bot.mode is BotModes.patrol and bot.steps is 0:
-        if bot.dir.x is -1 and bot.dir.y is -1:
-            return Vec(0, -1)
-        if bot.dir.x is 0 and bot.dir.y is -1:
-            return Vec(1, -1)
-        if bot.dir.x is 1 and bot.dir.y is -1:
-            return Vec(1, 0)
-        if bot.dir.x is 1 and bot.dir.y is 0:
-            return Vec(1, 1)
-        if bot.dir.x is 1 and bot.dir.y is 1:
-            return Vec(0, 1)
-        if bot.dir.x is 0 and bot.dir.y is 1:
-            return Vec(-1, 1)
-        if bot.dir.x is -1 and bot.dir.y is 1:
-            return Vec(-1, 0)
-        if bot.dir.x is -1 and bot.dir.y is 0:
-            return Vec(-1, -1)
+        for (prev_dir, next_dir) in patrol_dirs:
+            if is_vec_eq(bot.dir, prev_dir):
+                return next_dir
 
     return bot.dir
 
@@ -609,7 +598,7 @@ def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
     return Vec(x=min_x, y=min_y)
 
 
-def update_bot_steps(bot: Bot):
+def update_bot_steps(bot: Bot) -> int:
     if bot.mode is BotModes.patrol:
         if bot.steps == 0:
             return 1
@@ -752,6 +741,20 @@ def action(msg):
 
 
 # Views
+
+def view_box(box: Box):
+    stroke_width = 2
+    stroke_color = "#706660"
+
+    return Svg.rect({
+        "fill": box.color,
+        "width": box.width,
+        "height": box.height,
+        "stroke": stroke_color,
+        "stroke-width": stroke_width,
+        "transform": f"translate({box.pos.x}, {box.pos.y})",
+    })
+
 
 def view_stat(key, value):
     return Html.div({"class": "stat-field"}, [
