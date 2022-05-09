@@ -587,7 +587,9 @@ def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
         keyboard_dir = input_dir(bot.dir)
         for (prev_dir, next_dir) in bot.config.patrol_dirs:
             if is_vec_eq(keyboard_dir, prev_dir):
-                return normalize(Vec(x=bot.dir.x + (next_dir.x * 0.1), y=bot.dir.y + next_dir.y * 0.1))
+                return normalize(
+                    Vec(x=bot.dir.x + (next_dir.x * 0.1),
+                        y=bot.dir.y + next_dir.y * 0.1))
         return Vec(x=round(bot.dir.x, 0), y=round(bot.dir.y, 0))
 
     return bot.dir
@@ -833,7 +835,8 @@ def view(ref: Ref):
                 viewBox=f"0 0 {boundary.width} {boundary.height}",
             ), [
                 Svg.g({}, [
-                    render_entity(state.entities.get(entity_id)) for entity_id in state.render_order
+                    render_entity(state.entities.get(entity_id))
+                    for entity_id in state.render_order
                 ])
             ]),
         ]),
