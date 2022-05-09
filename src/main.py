@@ -625,8 +625,12 @@ def update_bot(bot: Bot, state: State) -> Bot:
 
 def view_bot(bot: Bot):
     center = to_center_pos(bot)
-    arrow_center = Vec((center.x + bot.dir.x * 15), (center.y + bot.dir.y * 15))
-    other_center = Vec((arrow_center.x + bot.dir.x * 10), (arrow_center.y + bot.dir.y * 10))
+    arrow_center = Vec(
+        (center.x + bot.dir.x * 15),
+        (center.y + bot.dir.y * 15))
+    other_center = Vec(
+        (arrow_center.x + bot.dir.x * 10),
+        (arrow_center.y + bot.dir.y * 10))
 
     return Svg.g({}, [
         view_box(bot),
@@ -640,8 +644,8 @@ def view_bot(bot: Bot):
         Svg.line({
             "x1": arrow_center.x,
             "y1": arrow_center.y,
-            "x2": (other_center.x),
-            "y2": (other_center.y),
+            "x2": other_center.x,
+            "y2": other_center.y,
             "stroke": "black",
             "stroke-width": 3,
         })
