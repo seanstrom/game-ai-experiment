@@ -109,22 +109,11 @@ def to_dir(start: Vec, end: Vec) -> Vec:
 def relative_dir(origin: Box, target: Box):
     origin_center = to_center_pos(origin)
     target_center = to_center_pos(target)
+    return normalize(to_dir(origin_center, target_center))
 
-    if origin_center.x > target_center.x:
-        x = -1
-    elif origin_center.x < target_center.x:
-        x = 1
-    else:
-        x = 0
 
-    if origin_center.y > target_center.y:
-        y = -1
-    elif origin_center.y < target_center.y:
-        y = 1
-    else:
-        y = 0
-
-    return Vec(x, y)
+def input_dir(dir: Vec):
+    return Vec(x=round(dir.x, 0), y=round(dir.y, 0))
 
 
 def is_vec_eq(a: Vec, b: Vec) -> bool:
@@ -248,10 +237,10 @@ def keyboard_down(to_msg):
 @dataclass
 class Ids:
     bot: str = "bot"
-    fov: str = "fov"
     player: str = "player"
     boundary: str = "boundary"
     proximity: str = "proximity"
+    visibility: str = "visibility"
 
 
 class BotModes:
@@ -265,7 +254,7 @@ class BotModes:
 
 @dataclass()
 class BotConfig:
-    max_steps = 20
+    max_steps = 2
     patrol_dirs = [
         (RelDir.Up, RelDir.UpRight),
         (RelDir.UpRight, RelDir.Right),
@@ -279,10 +268,10 @@ class BotConfig:
     speeds = {
         f"{BotModes.stop}": 0.0,
         f"{BotModes.start}": 0.0,
-        f"{BotModes.restart}": 0.8,
-        f"{BotModes.patrol}": 0.8,
-        f"{BotModes.pursue}": 1.3,
-        f"{BotModes.attack}": 2.0,
+        f"{BotModes.restart}": 1,
+        f"{BotModes.patrol}": 1,
+        f"{BotModes.pursue}": 1.75,
+        f"{BotModes.attack}": 2.5,
     }
 
 
@@ -319,6 +308,21 @@ class State:
 @dataclass
 class Ref:
     value: State = Any
+
+
+def within_boundary(item: (Box, Vec), boundary: (Box, Vec)) -> Vec:
+    (item_box, item_pos) = item
+    (boundary_box, boundary_offsets) = boundary
+
+    x = min(
+        max(boundary_box.pos.x + boundary_offsets.x, item_pos.x),
+        boundary_box.pos.x + boundary_box.width - item_box.width - boundary_offsets.x)
+
+    y = min(
+        max(boundary_box.pos.y + boundary_offsets.y, item_pos.y),
+        boundary_box.pos.y + boundary_box.height - item_box.height - boundary_offsets.y)
+
+    return Vec(x, y)
 
 
 # Proximity
@@ -386,9 +390,9 @@ def view_proximity(proximity: Proximity):
     ])
 
 
-# Field of View
+# Visibility
 
-def init_fov(origin: Pawn, target: Pawn) -> float:
+def init_visibility(origin: Pawn, target: Pawn) -> float:
     target_pos = to_center_pos(target)
     origin_pos = to_center_pos(origin)
     to_target_dir = normalize(to_dir(origin_pos, target_pos))
@@ -396,13 +400,13 @@ def init_fov(origin: Pawn, target: Pawn) -> float:
     return dot
 
 
-def update_fov(_fov: float, state: State) -> float:
+def update_visibility(_visibility: float, state: State) -> float:
     bot = state.entities.get(state.ids.bot)
     player = state.entities.get(state.ids.player)
-    return init_fov(bot.state, player.state)
+    return init_visibility(bot.state, player.state)
 
 
-def view_fov(fov: float, state: State):
+def view_visibility(visibility: float, state: State):
     return None
 
 
@@ -412,28 +416,18 @@ def init_player() -> Player:
     return Player(
         width=50,
         height=50,
-        color="blue",
+        color="#8ca9ff",
         dir=Vec(1, 0),
-        pos=Vec(x=0, y=0))
+        pos=Vec(x=5, y=5))
 
 
 def update_player_pos(player: Player, boundary: Box, keyboard: Keyboard) -> Vec:
     dt = 1.666
     speed_multiplier = 3
     speed = 1.0 * speed_multiplier
-
     x = player.pos.x + (to_x_dir(keyboard) * speed * dt)
     y = player.pos.y + (to_y_dir(keyboard) * speed * dt)
-
-    player.pos.x = min(
-        max(boundary.pos.x, x),
-        boundary.pos.x + boundary.width - player.width)
-
-    player.pos.y = min(
-        max(boundary.pos.y, y),
-        boundary.pos.y + boundary.height - player.height)
-
-    return player.pos
+    return within_boundary((player, Vec(x, y)), (boundary, Vec(3, 3)))
 
 
 def update_player_dir(player: Player, keyboard: Keyboard) -> Vec:
@@ -479,9 +473,10 @@ def init_bot(boundary: Box):
                 "neutral": Fuzzy.trapezoid(32, 80, 180, 228),
                 "far": Fuzzy.ramp(100, 300)
             }),
-            "viewing": Fuzzy.variable([-1, 1], {
-                "hidden": Fuzzy.gaussian(-1, 0.50),
-                "visible": Fuzzy.gaussian(1, 0.50)
+            "visibility": Fuzzy.variable([-1, 1], {
+                "hidden": Fuzzy.gaussian(-1, 0.5),
+                "peripheral": Fuzzy.gaussian(0, 0.1),
+                "visible": Fuzzy.gaussian(1, 0.5)
             }),
         },
         outputs={
@@ -493,43 +488,52 @@ def init_bot(boundary: Box):
         },
         rules=[
             Fuzzy.and_(
-                {"distance": "near", "viewing": "visible"},
+                {"distance": "near", "visibility": "visible"},
                 {"aggression": "high"}),
             Fuzzy.and_(
-                {"distance": "near", "viewing": "hidden"},
+                {"distance": "near", "visibility": "peripheral"},
                 {"aggression": "medium"}),
             Fuzzy.and_(
-                {"distance": "neutral", "viewing": "visible"},
+                {"distance": "near", "visibility": "hidden"},
+                {"aggression": "low"}),
+            Fuzzy.and_(
+                {"distance": "neutral", "visibility": "visible"},
                 {"aggression": "medium"}),
             Fuzzy.and_(
-                {"distance": "neutral", "viewing": "hidden"},
+                {"distance": "neutral", "visibility": "peripheral"},
                 {"aggression": "low"}),
             Fuzzy.and_(
-                {"distance": "far", "viewing": "visible"},
+                {"distance": "neutral", "visibility": "hidden"},
                 {"aggression": "low"}),
             Fuzzy.and_(
-                {"distance": "far", "viewing": "hidden"},
+                {"distance": "far", "visibility": "visible"},
+                {"aggression": "low"}),
+            Fuzzy.and_(
+                {"distance": "far", "visibility": "peripheral"},
+                {"aggression": "low"}),
+            Fuzzy.and_(
+                {"distance": "far", "visibility": "hidden"},
                 {"aggression": "low"}),
         ])
 
     return Bot(
-        color="red",
+        color="#ff9393",
         pos=pos,
         config=config,
         width=width,
         height=height,
-        dir=RelDir.Zero,
+        dir=RelDir.Right,
         mode=BotModes.start,
         steps=config.max_steps,
         controller=controller)
 
 
-def update_bot_aggression(bot: Bot, proximity: Proximity, fov: float) -> float:
+def update_bot_aggression(bot: Bot, proximity: Proximity, visibility: float) -> float:
     result = Fuzzy.defuzz(
         bot.controller.inputs,
         bot.controller.outputs,
         bot.controller.rules,
-        {"distance": proximity.distance, "viewing": fov})
+        {"distance": proximity.distance, "visibility": visibility})
     return result.aggression
 
 
@@ -580,9 +584,11 @@ def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
         return RelDir.Zero
 
     if bot.mode is BotModes.patrol and bot.steps is 0:
+        keyboard_dir = input_dir(bot.dir)
         for (prev_dir, next_dir) in bot.config.patrol_dirs:
-            if is_vec_eq(bot.dir, prev_dir):
-                return next_dir
+            if is_vec_eq(keyboard_dir, prev_dir):
+                return normalize(Vec(x=bot.dir.x + (next_dir.x * 0.1), y=bot.dir.y + next_dir.y * 0.1))
+        return Vec(x=round(bot.dir.x, 0), y=round(bot.dir.y, 0))
 
     return bot.dir
 
@@ -592,16 +598,7 @@ def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
     speed = 1 * (bot.config.speeds[bot.mode] or 1)
     x = bot.pos.x + (bot.dir.x * speed * dt)
     y = bot.pos.y + (bot.dir.y * speed * dt)
-
-    min_x = min(
-        max(boundary.pos.x, x),
-        boundary.pos.x + boundary.width - bot.width)
-
-    min_y = min(
-        max(boundary.pos.y, y),
-        boundary.pos.y + boundary.height - bot.height)
-
-    return Vec(x=min_x, y=min_y)
+    return within_boundary((bot, Vec(x, y)), (boundary, Vec(3, 3)))
 
 
 def update_bot_steps(bot: Bot) -> int:
@@ -614,12 +611,12 @@ def update_bot_steps(bot: Bot) -> int:
 
 
 def update_bot(bot: Bot, state: State) -> Bot:
-    fov = state.entities.get(state.ids.fov)
     player = state.entities.get(state.ids.player)
     boundary = state.entities.get(state.ids.boundary)
     proximity = state.entities.get(state.ids.proximity)
+    visibility = state.entities.get(state.ids.visibility)
     bot.steps = update_bot_steps(bot)
-    bot.aggression = update_bot_aggression(bot, proximity.state, fov.state)
+    bot.aggression = update_bot_aggression(bot, proximity.state, visibility.state)
     bot.mode = update_bot_mode(bot, boundary.state)
     bot.dir = update_bot_dir(bot, player.state, boundary.state)
     bot.pos = update_bot_pos(bot, boundary.state)
@@ -627,7 +624,28 @@ def update_bot(bot: Bot, state: State) -> Bot:
 
 
 def view_bot(bot: Bot):
-    return view_box(bot)
+    center = to_center_pos(bot)
+    arrow_center = Vec((center.x + bot.dir.x * 15), (center.y + bot.dir.y * 15))
+    other_center = Vec((arrow_center.x + bot.dir.x * 10), (arrow_center.y + bot.dir.y * 10))
+
+    return Svg.g({}, [
+        view_box(bot),
+        Svg.line({
+            "x1": center.x,
+            "y1": center.y,
+            "x2": arrow_center.x,
+            "y2": arrow_center.y,
+            "stroke": "black",
+        }),
+        Svg.line({
+            "x1": arrow_center.x,
+            "y1": arrow_center.y,
+            "x2": (other_center.x),
+            "y2": (other_center.y),
+            "stroke": "black",
+            "stroke-width": 3,
+        })
+    ])
 
 
 # Init
@@ -640,7 +658,7 @@ def init() -> Ref:
         state=Box(
             width=600,
             height=400,
-            color='#a4b398',
+            color='#5d6177',
             pos=Vec(x=0, y=0)))
 
     player = Entity(
@@ -652,7 +670,7 @@ def init() -> Ref:
     bot = Entity(
         id=Ids.bot,
         update_=update_bot,
-        view=view_box,
+        view=view_bot,
         state=init_bot(boundary.state))
 
     proximity = Entity(
@@ -661,19 +679,19 @@ def init() -> Ref:
         update_=update_proximity,
         view=view_proximity)
 
-    fov = Entity(
-        id=Ids.fov,
-        state=init_fov(bot.state, player.state),
-        update_=update_fov,
-        view=view_fov)
+    visibility = Entity(
+        id=Ids.visibility,
+        state=init_visibility(bot.state, player.state),
+        update_=update_visibility,
+        view=view_visibility)
 
     entities = Entities(
         background=[Ids.boundary],
-        observers=[Ids.fov, Ids.proximity],
+        observers=[Ids.visibility, Ids.proximity],
         pawns=[Ids.player, Ids.bot],
         data=dict(
             bot=bot,
-            fov=fov,
+            visibility=visibility,
             player=player,
             boundary=boundary,
             proximity=proximity))
@@ -757,7 +775,7 @@ def action(msg):
 
 def view_box(box: Box):
     stroke_width = 2
-    stroke_color = "#706660"
+    stroke_color = "#374048"
 
     return Svg.rect({
         "fill": box.color,
@@ -780,9 +798,12 @@ def view_stat(key, value):
 
 def view_chart(key, value):
     elem_id = f"{key}-viz"
-    svg = FuzzyViz.varToSvg(value, dict(samples=200))
-    return Html.div({"class": "fuzzy-input-chart"}, [
-        Html.div(dict(id=elem_id, innerHTML=svg), []),
+    svg = FuzzyViz.varToSvg(value, dict(samples=200, width=600, height=120))
+    return Html.div({"class": "stat-row fuzzy-input-chart"}, [
+        Html.div({"class": "chart-label"}, [
+            Html.text(f"{key.capitalize()} Memberships")
+        ]),
+        Html.div(dict(id=elem_id, innerHTML=svg), [])
     ])
 
 
@@ -792,11 +813,12 @@ def view(ref: Ref):
     """
     state = ref.value
     bot = state.entities.get(state.ids.bot).state
-    fov = state.entities.get(state.ids.fov).state
     boundary = state.entities.get(state.ids.boundary).state
     proximity = state.entities.get(state.ids.proximity).state
+    visibility = state.entities.get(state.ids.visibility).state
 
     def render_entity(entity):
+        if entity.id is state.ids.proximity: return None
         return entity.view(entity.state)
 
     return Html.main({"class": "container"}, [
@@ -814,22 +836,25 @@ def view(ref: Ref):
         Html.div({"class": "stats"}, [
             Html.div({"class": "stat-row"}, [
                 Html.div({"class": "stat-column"}, [
-                    view_stat("Field of View", fov),
-                    view_stat("Input Distance", proximity.distance),
+                    view_stat(
+                        "Visibility",
+                        Fuzzy.classify(bot.controller.inputs.visibility, visibility, 0.20).capitalize()
+                    ),
+                    view_stat("Proximity Distance", round(proximity.distance, 3)),
                 ]),
 
                 Html.div({"class": "stat-column"}, [
                     view_stat(
-                        "Distance Type",
-                        Fuzzy.classify(bot.controller.inputs.distance, proximity.distance)),
+                        "Proximity Level",
+                        Fuzzy.classify(bot.controller.inputs.distance, proximity.distance).capitalize()),
                     view_stat(
-                        "Aggression State",
-                        Fuzzy.classify(bot.controller.outputs.aggression, bot.aggression)),
+                        "Aggression Level",
+                        Fuzzy.classify(bot.controller.outputs.aggression, bot.aggression).capitalize()),
                 ]),
             ]),
 
             view_chart('distance', bot.controller.inputs.distance),
-            view_chart('viewing', bot.controller.inputs.viewing),
+            view_chart('visibility', bot.controller.inputs.visibility),
             view_chart('aggression', bot.controller.outputs.aggression),
         ]),
     ])
