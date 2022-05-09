@@ -8,6 +8,9 @@ from ffi.js import document, is_nan, window, Html, Hyper, Svg, Fuzzy, FuzzyViz
 
 @dataclass
 class Tick:
+    """
+    The game loop tick event
+    """
     pass
 
 
@@ -40,6 +43,10 @@ class Entity:
 
 @dataclass
 class Entities:
+    """
+    * The data structure that references all game entities
+    * and maintains their update and rendering orders
+    """
     data: Dict[str, Entity] = Any
     background: List[str] = Any
     observers: List[str] = Any
@@ -51,12 +58,18 @@ class Entities:
 
 @dataclass
 class FuzzyLogic:
+    """
+    The data structure that stores the fuzzy logic controller arguments
+    """
     inputs: Dict[str, Any] = Any
     outputs: Dict[str, Any] = Any
     rules: List[Any] = Any
 
 
 class RelDir:
+    """
+    All of these possible movement directions based on keyboard input
+    """
     Up = Vec(0, -1)
     Down = Vec(0, 1)
     Left = Vec(-1, 0)
@@ -167,6 +180,9 @@ def clock(msg):
 
 @dataclass
 class Keyboard:
+    """
+    The data structure that stores the states of the keyboard arrow keys
+    """
     up: bool = False
     down: bool = False
     left: bool = False
@@ -175,11 +191,17 @@ class Keyboard:
 
 @dataclass
 class KeyChange:
+    """
+    The event data structure that emits when a keyboard key is pressed or released
+    """
     key: str = ""
     is_down: bool = False
 
 
 class ArrowKeys:
+    """
+    The constants for the arrow key string identifiers
+    """
     Up = "ArrowUp"
     Down = "ArrowDown"
     Left = "ArrowLeft"
@@ -236,6 +258,9 @@ def keyboard_down(to_msg):
 
 @dataclass
 class Ids:
+    """
+    The string constants for all the game entities
+    """
     bot: str = "bot"
     player: str = "player"
     boundary: str = "boundary"
@@ -244,6 +269,9 @@ class Ids:
 
 
 class BotModes:
+    """
+    The string constants for all of the AI bot behaviour states
+    """
     stop = "stop"
     start = "start"
     restart = "restart"
@@ -254,6 +282,9 @@ class BotModes:
 
 @dataclass()
 class BotConfig:
+    """
+    The AI bot configuration for the step counter, patrol directions, and bot speed
+    """
     max_steps = 2
     patrol_dirs = [
         (RelDir.Up, RelDir.UpRight),
@@ -277,6 +308,14 @@ class BotConfig:
 
 @dataclass
 class Bot(Pawn):
+    """
+    The AI bot's state data structure that stores:
+        * the AI bot step counter
+        * the aggression level
+        * its mode / behaviour state
+        * the fuzzy logic controller for aggression level
+        * the AI bot configuration
+    """
     steps: int = 0
     aggression: float = 0.0
     mode: str = BotModes.start
@@ -286,11 +325,18 @@ class Bot(Pawn):
 
 @dataclass
 class Player(Pawn):
+    """
+    * The wrapping data structure of the Pawn class
+    * Ready to be extended
+    """
     pass
 
 
 @dataclass
 class Proximity(Box):
+    """
+    The data structure for storing the proximity sensor data
+    """
     distance: float = 0.0
     inner_rect: Box = Any
     outer_rect: Box = Any
@@ -298,6 +344,13 @@ class Proximity(Box):
 
 @dataclass
 class State:
+    """
+    The game state data structure that stores:
+        * entity ids
+        * keyboard state
+        * entity state
+        * entity rendering and updating orders
+    """
     ids: Ids = Any
     keyboard: Keyboard = Any
     entities: Entities = Any
@@ -307,10 +360,16 @@ class State:
 
 @dataclass
 class Ref:
+    """
+    A reference data structure for wrapping the game state
+    """
     value: State = Any
 
 
 def within_boundary(item: (Box, Vec), boundary: (Box, Vec)) -> Vec:
+    """
+    * Clamp the position of the AI bot or player based on the game's boundary
+    """
     (item_box, item_pos) = item
     (boundary_box, boundary_offsets) = boundary
 
@@ -356,6 +415,9 @@ def make_inner_rect(outer_rect: Box, player: Player, bot: Bot) -> Box:
 
 
 def detect_proximity(player: Player, bot: Bot) -> (Box, Box, float):
+    """
+    * Calculate the minimum distance between the player and AI bot
+    """
     outer_rect = make_outer_rect(player, bot)
     inner_rect = make_inner_rect(outer_rect, player, bot)
 
@@ -367,11 +429,17 @@ def detect_proximity(player: Player, bot: Bot) -> (Box, Box, float):
 
 
 def init_proximity(player: Player, bot: Bot) -> Proximity:
+    """
+    * Initialize the proximity sensor state
+    """
     (outer_rect, inner_rect, distance) = detect_proximity(player, bot)
     return Proximity(distance=distance, outer_rect=outer_rect, inner_rect=inner_rect)
 
 
 def update_proximity(proximity: Proximity, state: State) -> Proximity:
+    """
+    * Update the proximity sensor with the minimum distance between the player and the AI bot
+    """
     bot = state.entities.get(state.ids.bot)
     player = state.entities.get(state.ids.player)
     (outer_rect, inner_rect, distance) =\
@@ -384,6 +452,9 @@ def update_proximity(proximity: Proximity, state: State) -> Proximity:
 
 
 def view_proximity(proximity: Proximity):
+    """
+    * Visualize the proximity between the player and the AI bot
+    """
     return Svg.g({}, [
         view_box(proximity.outer_rect),
         view_box(proximity.inner_rect)
@@ -393,6 +464,9 @@ def view_proximity(proximity: Proximity):
 # Visibility
 
 def init_visibility(origin: Pawn, target: Pawn) -> float:
+    """
+    * Initialize the state for the visibility of the player for the AI bot
+    """
     target_pos = to_center_pos(target)
     origin_pos = to_center_pos(origin)
     to_target_dir = normalize(to_dir(origin_pos, target_pos))
@@ -401,6 +475,9 @@ def init_visibility(origin: Pawn, target: Pawn) -> float:
 
 
 def update_visibility(_visibility: float, state: State) -> float:
+    """
+    * Update the sensor data for the visibility of the player for the AI bot
+    """
     bot = state.entities.get(state.ids.bot)
     player = state.entities.get(state.ids.player)
     return init_visibility(bot.state, player.state)
@@ -413,6 +490,9 @@ def view_visibility(visibility: float, state: State):
 # Player
 
 def init_player() -> Player:
+    """
+    * Initialize the player state
+    """
     return Player(
         width=50,
         height=50,
@@ -422,6 +502,9 @@ def init_player() -> Player:
 
 
 def update_player_pos(player: Player, boundary: Box, keyboard: Keyboard) -> Vec:
+    """
+    * Update the player's position based on keyboard input
+    """
     dt = 1.666
     speed_multiplier = 3
     speed = 1.0 * speed_multiplier
@@ -431,6 +514,10 @@ def update_player_pos(player: Player, boundary: Box, keyboard: Keyboard) -> Vec:
 
 
 def update_player_dir(player: Player, keyboard: Keyboard) -> Vec:
+    """
+    * Update the player's direction
+    * Keep the player's last moving direction if idle
+    """
     x = to_x_dir(keyboard)
     y = to_y_dir(keyboard)
 
@@ -442,6 +529,9 @@ def update_player_dir(player: Player, keyboard: Keyboard) -> Vec:
 
 
 def update_player(player: Player, state: State) -> Player:
+    """
+    * Update the player's state for its position and direction
+    """
     boundary = state.entities.get(state.ids.boundary)
     player.dir = update_player_dir(player, state.keyboard)
     player.pos = update_player_pos(player, boundary.state, state.keyboard)
@@ -449,12 +539,19 @@ def update_player(player: Player, state: State) -> Player:
 
 
 def view_player(player: Player):
+    """
+    * Visualize the player as a blue box
+    """
     return view_box(player)
 
 
 # Bot
 
 def init_bot(boundary: Box):
+    """
+    * Initialize the state of the AI bot
+    * Configure the fuzzy logic controller for the aggression level
+    """
     width = 50
     height = 50
     config = BotConfig()
@@ -529,6 +626,11 @@ def init_bot(boundary: Box):
 
 
 def update_bot_aggression(bot: Bot, proximity: Proximity, visibility: float) -> float:
+    """
+    * Execute the fuzzy logic controller for the aggression level based on:
+        * player proximity
+        * player visibility
+    """
     result = Fuzzy.defuzz(
         bot.controller.inputs,
         bot.controller.outputs,
@@ -538,6 +640,14 @@ def update_bot_aggression(bot: Bot, proximity: Proximity, visibility: float) -> 
 
 
 def update_bot_mode(bot: Bot, boundary: Box) -> str:
+    """
+    * Update the AI bot's behaviour state based on its aggression level
+    * Coordinate the AI bot to:
+        * attack when very near to a visible player
+        * pursue when near a visible player
+        * patrol when not near a visible player
+        * return to its post if it lost or caught the player
+    """
     aggression_level = Fuzzy.classify(
         bot.controller.outputs.aggression, bot.aggression)
 
@@ -574,6 +684,10 @@ def update_bot_mode(bot: Bot, boundary: Box) -> str:
 
 
 def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
+    """
+    * Update the direction the AI bot is facing base on its behaviour state
+    * Coordinate the AI bot to walk in circles when on patrol
+    """
     if bot.mode in [BotModes.start, BotModes.restart]:
         return relative_dir(bot, boundary)
 
@@ -596,6 +710,10 @@ def update_bot_dir(bot: Bot, player: Player, boundary: Box) -> Vec:
 
 
 def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
+    """
+    * Update the position of the AI bot
+    * Adapt the speed of the AI bot based on its behaviour state
+    """
     dt = 1.666
     speed = 1 * (bot.config.speeds[bot.mode] or 1)
     x = bot.pos.x + (bot.dir.x * speed * dt)
@@ -604,6 +722,9 @@ def update_bot_pos(bot: Bot, boundary: Box) -> Vec:
 
 
 def update_bot_steps(bot: Bot) -> int:
+    """
+    * Decrement the step counter or reset the counter if at zero
+    """
     if bot.mode is BotModes.patrol:
         if bot.steps == 0:
             return bot.config.max_steps
@@ -613,6 +734,14 @@ def update_bot_steps(bot: Bot) -> int:
 
 
 def update_bot(bot: Bot, state: State) -> Bot:
+    """
+    * Update the AI bot state
+        * the amount of steps taken by the AI bot on patrol
+        * the aggression level by the AI bot
+        * the behaviour mode of the AI bot
+        * the direction the AI bot is facing
+        * the position of the AI bot
+    """
     player = state.entities.get(state.ids.player)
     boundary = state.entities.get(state.ids.boundary)
     proximity = state.entities.get(state.ids.proximity)
@@ -626,6 +755,10 @@ def update_bot(bot: Bot, state: State) -> Bot:
 
 
 def view_bot(bot: Bot):
+    """
+    * Visualize the AI bot as a red square
+    * Visualize an indicator for the direction the AI bot is facing
+    """
     center = to_center_pos(bot)
     arrow_center = Vec(
         (center.x + bot.dir.x * 15),
@@ -657,6 +790,10 @@ def view_bot(bot: Bot):
 # Init
 
 def init() -> Ref:
+    """
+    * Initialize the entire game state
+    * Create the state for all entities like the AI bot and player
+    """
     boundary = Entity(
         id=Ids.boundary,
         update_=lambda _state: _state,
@@ -724,6 +861,10 @@ def init() -> Ref:
 
 
 def subscriptions():
+    """
+    * Configure game to listen for clock ticks at 60 FPS
+    * Configure game to listen for keyboard presses for the player inputs
+    """
     tick = action(Tick())
     return [
         clock(tick),
@@ -735,6 +876,9 @@ def subscriptions():
 # Update
 
 def update_keyboard(state, msg):
+    """
+    * Update the state of the keyboard bindings based on keyboard events
+    """
     keyboard = state.keyboard
 
     if msg.key is ArrowKeys.Up:
@@ -751,8 +895,9 @@ def update_keyboard(state, msg):
 
 def update(ref: Ref, msg) -> Ref:
     """
-    Responsible for:
-        * transitioning the program's state machine based on the interactions in the program
+    * Listen for keyboard events from the web browser
+    * Listen for clock "ticks" to render the game at 60 FPS
+    * Update the state of the game and all entities every frame
     """
     state = ref.value
 
@@ -815,7 +960,9 @@ def view_chart(key, value):
 
 def view(ref: Ref):
     """
-    Visualizes the entire program state as maze of cells with controls to traverse the maze
+    * Visualize the AI bot and player boxes
+    * Visualize the metrics between the AI bot and player
+    * Visualize the membership functions for the fuzzy logic controller
     """
     state = ref.value
     bot = state.entities.get(state.ids.bot).state
@@ -871,8 +1018,8 @@ def view(ref: Ref):
 
 def main():
     """
-    * Initializes the search of a maze layout with a search strategy
-    * Visualize the maze of cells as HTML elements
+    * Initialize the rendering of the game loop
+    * Render each frame to the web page
     """
     element = document.getElementById("root")
     Hyper.app(node=element, view=view, init=init, subscriptions=subscriptions)
