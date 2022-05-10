@@ -270,7 +270,7 @@ class Ids:
 
 class BotModes:
     """
-    The string constants for all of the AI bot behaviour states
+    The string constants for all the AI bot behaviour states
     """
     stop = "stop"
     start = "start"
