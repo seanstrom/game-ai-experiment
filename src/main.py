@@ -1049,7 +1049,7 @@ def view(ref: Ref):
                 Html.text("Hide Stats" if state.show_stats else "Show Stats")
             ]),
             Html.button({"onclick": action(ToggleCharts())}, [
-                Html.text("Hide Charts" if state.show_stats else "Show Charts")
+                Html.text("Hide Charts" if state.show_charts else "Show Charts")
             ])
         ]),
         view_stats(state),
