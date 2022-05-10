@@ -22,7 +22,7 @@ class Vec:
 
 @dataclass
 class Box:
-    pos: Vec = Any
+    pos: Vec = Vec()
     color: str = ""
     width: float = 0
     height: float = 0
@@ -30,15 +30,15 @@ class Box:
 
 @dataclass
 class Pawn(Box):
-    dir: Vec = Any
+    dir: Vec = Vec()
 
 
 @dataclass
 class Entity:
     id: str = ""
-    state: Any = Any
-    view: Callable[[Any], Any] = Any
-    update_: Callable[[Any, Any], Any] = Any
+    state: Any = None
+    view: Callable[[Any], Any] = None
+    update_: Callable[[Any, Any], Any] = None
 
 
 @dataclass
@@ -47,10 +47,10 @@ class Entities:
     * The data structure that references all game entities
     * and maintains their update and rendering orders
     """
-    data: Dict[str, Entity] = Any
-    background: List[str] = Any
-    observers: List[str] = Any
-    pawns: List[str] = Any
+    data: Dict[str, Entity] = dict()
+    background: List[str] = list()
+    observers: List[str] = list()
+    pawns: List[str] = list()
 
     def get(self, entity_id: str):
         return self.data[entity_id]
@@ -61,9 +61,9 @@ class FuzzyLogic:
     """
     The data structure that stores the fuzzy logic controller arguments
     """
-    inputs: Dict[str, Any] = Any
-    outputs: Dict[str, Any] = Any
-    rules: List[Any] = Any
+    inputs: Dict[str, Any] = dict()
+    outputs: Dict[str, Any] = dict()
+    rules: List[Any] = list()
 
 
 class RelDir:
@@ -319,7 +319,7 @@ class Bot(Pawn):
     steps: int = 0
     aggression: float = 0.0
     mode: str = BotModes.start
-    controller: FuzzyLogic = Any
+    controller: FuzzyLogic = FuzzyLogic()
     config: BotConfig = BotConfig
 
 
@@ -338,8 +338,8 @@ class Proximity(Box):
     The data structure for storing the proximity sensor data
     """
     distance: float = 0.0
-    inner_rect: Box = Any
-    outer_rect: Box = Any
+    inner_rect: Box = Box()
+    outer_rect: Box = Box()
 
 
 @dataclass
@@ -351,11 +351,11 @@ class State:
         * entity state
         * entity rendering and updating orders
     """
-    ids: Ids = Any
-    keyboard: Keyboard = Any
-    entities: Entities = Any
-    update_order: List[str] = Any
-    render_order: List[str] = Any
+    ids: Ids = Ids()
+    keyboard: Keyboard = Keyboard()
+    entities: Entities = Entities()
+    update_order: List[str] = list()
+    render_order: List[str] = list()
     show_stats: bool = False
     show_charts: bool = False
 
@@ -365,7 +365,7 @@ class Ref:
     """
     A reference data structure for wrapping the game state
     """
-    value: State = Any
+    value: State = State()
 
 
 def within_boundary(item: (Box, Vec), boundary: (Box, Vec)) -> Vec:
