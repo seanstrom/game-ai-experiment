@@ -354,8 +354,8 @@ class State:
     ids: Ids = Ids()
     keyboard: Keyboard = Keyboard()
     entities: Entities = Entities()
-    update_order: List[str] = list()
-    render_order: List[str] = list()
+    update_order: List[str] = field(default_factory=list)
+    render_order: List[str] = field(default_factory=list)
     show_stats: bool = False
     show_charts: bool = False
 
