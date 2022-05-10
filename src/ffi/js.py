@@ -56,3 +56,12 @@ def asdict(data):
             props[propName] = data[propName]
 
     return props
+
+
+# Polyfill field for dataclasses
+
+def field(default_factory=None):
+    if default_factory:
+        return default_factory()
+    else:
+        return default_factory
