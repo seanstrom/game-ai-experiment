@@ -356,6 +356,8 @@ class State:
     entities: Entities = Any
     update_order: List[str] = Any
     render_order: List[str] = Any
+    show_stats: bool = False
+    show_charts: bool = False
 
 
 @dataclass
@@ -875,6 +877,14 @@ def subscriptions():
 
 # Update
 
+class ToggleStats:
+    pass
+
+
+class ToggleCharts:
+    pass
+
+
 def update_keyboard(state, msg):
     """
     * Update the state of the keyboard bindings based on keyboard events
@@ -912,6 +922,14 @@ def update(ref: Ref, msg) -> Ref:
         state.keyboard = update_keyboard(state, msg)
         return Ref(value=state)
 
+    if type(msg) is ToggleStats:
+        state.show_stats = not state.show_stats
+        return Ref(value=state)
+
+    if type(msg) is ToggleCharts:
+        state.show_charts = not state.show_charts
+        return Ref(value=state)
+
     return ref
 
 
@@ -940,7 +958,7 @@ def view_box(box: Box):
 
 def view_stat(key, value):
     return Html.div({"class": "stat-field"}, [
-        Html.span({"class": "stat-label"}, [
+        Html.div({"class": "stat-label"}, [
             Html.text(f"{key}: "),
         ]),
         Html.text(value)
@@ -958,6 +976,48 @@ def view_chart(key, value):
     ])
 
 
+def view_stats(state: State):
+    if not state.show_stats:
+        return None
+
+    bot = state.entities.get(state.ids.bot).state
+    proximity = state.entities.get(state.ids.proximity).state
+    visibility = state.entities.get(state.ids.visibility).state
+
+    return Html.div({"class": "stats"}, [
+        Html.div({"class": "stat-row"}, [
+            Html.div({"class": "stat-column"}, [
+                view_stat(
+                    "Visibility",
+                    Fuzzy.classify(bot.controller.inputs.visibility, visibility, 0.20).capitalize()
+                ),
+                view_stat("Proximity Distance", round(proximity.distance, 3)),
+            ]),
+
+            Html.div({"class": "stat-column"}, [
+                view_stat(
+                    "Proximity Level",
+                    Fuzzy.classify(bot.controller.inputs.distance, proximity.distance).capitalize()),
+                view_stat(
+                    "Aggression Level",
+                    Fuzzy.classify(bot.controller.outputs.aggression, bot.aggression).capitalize()),
+            ])
+        ])
+    ])
+
+
+def view_charts(state: State):
+    if not state.show_charts:
+        return None
+
+    bot = state.entities.get(state.ids.bot).state
+    return Html.div({"class": "charts"}, [
+        view_chart('distance', bot.controller.inputs.distance),
+        view_chart('visibility', bot.controller.inputs.visibility),
+        view_chart('aggression', bot.controller.outputs.aggression),
+    ])
+
+
 def view(ref: Ref):
     """
     * Visualize the AI bot and player boxes
@@ -965,10 +1025,7 @@ def view(ref: Ref):
     * Visualize the membership functions for the fuzzy logic controller
     """
     state = ref.value
-    bot = state.entities.get(state.ids.bot).state
     boundary = state.entities.get(state.ids.boundary).state
-    proximity = state.entities.get(state.ids.proximity).state
-    visibility = state.entities.get(state.ids.visibility).state
 
     def render_entity(entity):
         if entity.id is state.ids.proximity: return None
@@ -987,30 +1044,16 @@ def view(ref: Ref):
                 ])
             ]),
         ]),
-        Html.div({"class": "stats"}, [
-            Html.div({"class": "stat-row"}, [
-                Html.div({"class": "stat-column"}, [
-                    view_stat(
-                        "Visibility",
-                        Fuzzy.classify(bot.controller.inputs.visibility, visibility, 0.20).capitalize()
-                    ),
-                    view_stat("Proximity Distance", round(proximity.distance, 3)),
-                ]),
-
-                Html.div({"class": "stat-column"}, [
-                    view_stat(
-                        "Proximity Level",
-                        Fuzzy.classify(bot.controller.inputs.distance, proximity.distance).capitalize()),
-                    view_stat(
-                        "Aggression Level",
-                        Fuzzy.classify(bot.controller.outputs.aggression, bot.aggression).capitalize()),
-                ]),
+        Html.div({"class": "buttons"}, [
+            Html.button({"onclick": action(ToggleStats())}, [
+                Html.text("Hide Stats" if state.show_stats else "Show Stats")
             ]),
-
-            view_chart('distance', bot.controller.inputs.distance),
-            view_chart('visibility', bot.controller.inputs.visibility),
-            view_chart('aggression', bot.controller.outputs.aggression),
+            Html.button({"onclick": action(ToggleCharts())}, [
+                Html.text("Hide Charts" if state.show_stats else "Show Charts")
+            ])
         ]),
+        view_stats(state),
+        view_charts(state)
     ])
 
 

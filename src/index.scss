@@ -10,10 +10,24 @@ body {
   font-family: "Helvetica Neue", sans-serif;
 }
 
-.container {
+body {
   display: flex;
   justify-content: center;
+}
+
+.container {
+  display: flex;
+  align-self: center;
   flex-direction: column;
+}
+
+.buttons {
+  margin: 1.5rem;
+  margin-bottom: 2rem;
+
+  button {
+    margin-right: 0.5rem;
+  }
 }
 
 .canvas {
@@ -27,13 +41,11 @@ body {
   border-radius: 30px;
 }
 
-.stats {
+.stats, .charts {
   display: flex;
   flex: 1 1 auto;
-  align-self: center;
   flex-direction: column;
-  padding: 10px;
-  padding-top: 1.5rem;
+  padding: 0 1.5rem;
   margin-bottom: 1rem;
 
   .stat-row {
@@ -49,12 +61,12 @@ body {
   }
 
   .stat-field {
-    margin-bottom: 2px;
+    margin-bottom: 1rem;
   }
 
   .chart-label, .stat-label {
     font-weight: 500;
-    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
   }
 
   .fuzzy-input-chart {
