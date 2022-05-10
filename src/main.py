@@ -1,7 +1,7 @@
 from math import sqrt
 from dataclasses import dataclass
 from typing import Any, Dict, List, Callable
-from ffi.js import document, is_nan, window, Html, Hyper, Svg, Fuzzy, FuzzyViz
+from ffi.js import document, field, is_nan, window, Html, Hyper, Svg, Fuzzy, FuzzyViz
 
 
 # Platform
@@ -47,10 +47,10 @@ class Entities:
     * The data structure that references all game entities
     * and maintains their update and rendering orders
     """
-    data: Dict[str, Entity] = dict()
-    background: List[str] = list()
-    observers: List[str] = list()
-    pawns: List[str] = list()
+    data: Dict[str, Entity] = field(default_factory=list)
+    background: List[str] = field(default_factory=list)
+    observers: List[str] = field(default_factory=list)
+    pawns: List[str] = field(default_factory=list)
 
     def get(self, entity_id: str):
         return self.data[entity_id]
@@ -61,9 +61,9 @@ class FuzzyLogic:
     """
     The data structure that stores the fuzzy logic controller arguments
     """
-    inputs: Dict[str, Any] = dict()
-    outputs: Dict[str, Any] = dict()
-    rules: List[Any] = list()
+    inputs: Dict[str, Any] = field(default_factory=dict)
+    outputs: Dict[str, Any] = field(default_factory=dict)
+    rules: List[Any] = field(default_factory=list)
 
 
 class RelDir:
