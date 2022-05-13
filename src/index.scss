@@ -5,7 +5,8 @@
 body {
   margin: 0;
   padding: 1rem;
-  height: 100vh;
+  min-height: 100vh;
+  height: 100%;
   background: #eeeeee;
   font-family: "Helvetica Neue", sans-serif;
 }
@@ -22,8 +23,10 @@ body {
 }
 
 .buttons {
+  display: flex;
   margin: 1.5rem;
   margin-bottom: 2rem;
+  justify-content: center;
 
   button {
     margin-right: 0.5rem;
@@ -41,23 +44,33 @@ body {
   border-radius: 30px;
 }
 
+.stats {
+  border: 1px solid black;
+  padding-top: 1rem;
+  border-radius: 30px;
+  align-self: center;
+  min-width: 70%;
+
+  .stat-row {
+    justify-content: space-evenly;
+    margin-bottom: 0;
+  }
+}
+
 .stats, .charts {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  padding: 0 1.5rem;
-  margin-bottom: 1rem;
+  margin: 0 1.5rem;
+  margin-bottom: 1.5rem;
 
   .stat-row {
     display: flex;
     flex: 1 1 auto;
-    margin-bottom: 1.5rem;
   }
 
   .stat-column {
-    flex-direction: column;
-    display: flex;
-    flex: 1 1 100%;
+    display: inline-block;
   }
 
   .stat-field {
@@ -73,11 +86,13 @@ body {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
+    margin-bottom: 1.5rem;
 
     .chart-label {
       padding-bottom: 0.5rem;
       margin-bottom: 0.5rem;
       border-bottom: 1px solid black;
+      text-align: center;
     }
   }
 }
