@@ -1,0 +1,95 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  height: 100%;
+  background: #eee;
+  justify-content: center;
+  margin: 0;
+  padding: 1rem;
+  font-family: Helvetica Neue, sans-serif;
+  display: flex;
+}
+
+.container {
+  flex-direction: column;
+  align-self: center;
+  display: flex;
+}
+
+.buttons {
+  justify-content: center;
+  margin: 1.5rem 1.5rem 2rem;
+  display: flex;
+}
+
+.buttons button {
+  margin-right: .5rem;
+}
+
+.canvas {
+  background: #333;
+  border: 1px solid #eee;
+  border-radius: 30px;
+  flex: auto;
+  justify-content: center;
+  align-self: center;
+  padding: 1.5rem;
+  display: flex;
+}
+
+.stats {
+  min-width: 70%;
+  border: 1px solid #000;
+  border-radius: 30px;
+  align-self: center;
+  padding-top: 1rem;
+}
+
+.stats .stat-row {
+  justify-content: space-evenly;
+  margin-bottom: 0;
+}
+
+.stats, .charts {
+  flex-direction: column;
+  flex: auto;
+  margin: 0 1.5rem 1.5rem;
+  display: flex;
+}
+
+.stats .stat-row, .charts .stat-row {
+  flex: auto;
+  display: flex;
+}
+
+.stats .stat-column, .charts .stat-column {
+  display: inline-block;
+}
+
+.stats .stat-field, .charts .stat-field {
+  margin-bottom: 1rem;
+}
+
+.stats .chart-label, .stats .stat-label, .charts .chart-label, .charts .stat-label {
+  margin-bottom: .5rem;
+  font-weight: 500;
+}
+
+.stats .fuzzy-input-chart, .charts .fuzzy-input-chart {
+  flex-direction: column;
+  flex: auto;
+  margin-bottom: 1.5rem;
+  display: flex;
+}
+
+.stats .fuzzy-input-chart .chart-label, .charts .fuzzy-input-chart .chart-label {
+  text-align: center;
+  border-bottom: 1px solid #000;
+  margin-bottom: .5rem;
+  padding-bottom: .5rem;
+}
+
+/*# sourceMappingURL=index.ce1d6491.css.map */
